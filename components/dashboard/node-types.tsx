@@ -1,7 +1,7 @@
 "use client"
 
 import { Handle, Position } from "reactflow"
-import { Play, Move, RotateCw, Timer, Cpu, Radio } from "lucide-react"
+import { Play, Move, RotateCw, Timer, TrendingUp, StopCircle } from "lucide-react"
 
 const nodeBaseClass =
   "rounded-lg border border-white/20 bg-gradient-to-br from-zinc-900 to-black px-4 py-3 shadow-xl min-w-[180px]"
@@ -85,19 +85,18 @@ function WaitNode({ data }: { data: { label: string; duration?: number } }) {
   )
 }
 
-function ServoNode({ data }: { data: { label: string; position?: number; servoName?: string } }) {
+function PathFollowNode({ data }: { data: { label: string; waypoints?: number[][] } }) {
+  const waypointCount = data.waypoints?.length || 3
   return (
     <div className={`${nodeBaseClass} border-[#a78bfa]/40`}>
       <Handle type="target" position={Position.Top} className="!bg-[#a78bfa]" />
       <div className="flex items-center gap-2">
         <div className="rounded-md bg-[#a78bfa]/20 p-1.5">
-          <Cpu className="h-4 w-4 text-[#a78bfa]" />
+          <TrendingUp className="h-4 w-4 text-[#a78bfa]" />
         </div>
         <div>
           <div className="text-sm font-semibold text-white">{data.label}</div>
-          <div className="text-xs text-zinc-400">
-            {data.servoName || "servo1"}: {(data.position || 0.5).toFixed(2)}
-          </div>
+          <div className="text-xs text-zinc-400">{waypointCount} waypoints</div>
         </div>
       </div>
       <Handle type="source" position={Position.Bottom} className="!bg-[#a78bfa]" />
@@ -105,20 +104,19 @@ function ServoNode({ data }: { data: { label: string; position?: number; servoNa
   )
 }
 
-function SensorNode({ data }: { data: { label: string; sensorType?: string } }) {
+function StopNode({ data }: { data: { label: string } }) {
   return (
-    <div className={`${nodeBaseClass} border-[#fbbf24]/40`}>
-      <Handle type="target" position={Position.Top} className="!bg-[#fbbf24]" />
+    <div className={`${nodeBaseClass} border-[#ef4444]/40 bg-gradient-to-br from-[#ef4444]/10 to-black`}>
+      <Handle type="target" position={Position.Top} className="!bg-[#ef4444]" />
       <div className="flex items-center gap-2">
-        <div className="rounded-md bg-[#fbbf24]/20 p-1.5">
-          <Radio className="h-4 w-4 text-[#fbbf24]" />
+        <div className="rounded-md bg-[#ef4444]/20 p-1.5">
+          <StopCircle className="h-4 w-4 text-[#ef4444]" />
         </div>
         <div>
           <div className="text-sm font-semibold text-white">{data.label}</div>
-          <div className="text-xs text-zinc-400">Type: {data.sensorType || "Distance"}</div>
+          <div className="text-xs text-zinc-400">End execution</div>
         </div>
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-[#fbbf24]" />
     </div>
   )
 }
@@ -127,7 +125,7 @@ export const nodeTypes = {
   startNode: StartNode,
   moveNode: MoveNode,
   turnNode: TurnNode,
+  pathFollowNode: PathFollowNode,
   waitNode: WaitNode,
-  servoNode: ServoNode,
-  sensorNode: SensorNode,
+  stopNode: StopNode,
 }

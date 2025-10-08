@@ -16,12 +16,13 @@ import {
   NodeMouseHandler,
 } from "reactflow"
 import "reactflow/dist/style.css"
-import { Play, Square, RotateCcw, PanelRightClose, PanelRight } from "lucide-react"
+import { Play, Square, RotateCcw, PanelRightClose, PanelRight, Repeat, PlayCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { geist } from "@/lib/fonts"
 import { motion, AnimatePresence } from "framer-motion"
 import NodePalette from "./node-palette"
 import FieldVisualization from "./field-visualization"
+import FieldWithPathEditor from "./field-with-path-editor"
 import NodeSettingsPanel from "./node-settings-panel"
 import { nodeTypes } from "./node-types"
 
@@ -49,6 +50,8 @@ export default function Playground({ project }: { project: Project }) {
   const [robotAngle, setRobotAngle] = useState(0)
   const [selectedNode, setSelectedNode] = useState<any>(null)
   const [fieldVisible, setFieldVisible] = useState(true)
+  const [loopMode, setLoopMode] = useState(false)
+  const [shouldContinueLoop, setShouldContinueLoop] = useState(false)
 
   const onConnect = useCallback(
     (params: Connection | Edge) => setEdges((eds) => addEdge(params, eds)),
@@ -70,10 +73,19 @@ export default function Playground({ project }: { project: Project }) {
     )
   }
 
+  const handleDeleteNode = (nodeId: string) => {
+    setNodes((nds) => nds.filter((node) => node.id !== nodeId))
+    setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId))
+  }
+
   const executeFlow = useCallback(async () => {
     // Find the start node
     const startNode = nodes.find((n) => n.type === "startNode")
-    if (!startNode) return
+    if (!startNode) {
+      setIsRunning(false)
+      setShouldContinueLoop(false)
+      return
+    }
 
     // Build execution order by traversing the graph
     const executionOrder = []
@@ -84,6 +96,9 @@ export default function Playground({ project }: { project: Project }) {
       if (!node) break
 
       executionOrder.push(node)
+
+      // Check if this is a stop node - if so, break
+      if (node.type === "stopNode") break
 
       // Find the next node
       const outgoingEdge = edges.find((e) => e.source === currentNodeId)
@@ -96,7 +111,7 @@ export default function Playground({ project }: { project: Project }) {
     setRobotPosition(currentPosition)
     setRobotAngle(currentAngle)
 
-    // Execute each node
+    // Execute each node sequentially
     for (const node of executionOrder) {
       if (node.type === "moveNode") {
         if (node.data.usePosition) {
@@ -107,11 +122,35 @@ export default function Playground({ project }: { project: Project }) {
           setRobotPosition(currentPosition)
           await new Promise((resolve) => setTimeout(resolve, 1500))
         } else {
-          // Move forward in current direction
+          // Move based on movement type (mecanum wheel capabilities)
           const distance = node.data.distance || 24
+          const moveType = node.data.moveType || "forward"
           const radians = (currentAngle * Math.PI) / 180
-          const newX = currentPosition.x + distance * Math.cos(radians)
-          const newY = currentPosition.y + distance * Math.sin(radians)
+
+          let newX = currentPosition.x
+          let newY = currentPosition.y
+
+          switch (moveType) {
+            case "forward":
+              newX = currentPosition.x + distance * Math.cos(radians)
+              newY = currentPosition.y + distance * Math.sin(radians)
+              break
+            case "backward":
+              newX = currentPosition.x - distance * Math.cos(radians)
+              newY = currentPosition.y - distance * Math.sin(radians)
+              break
+            case "strafe-left":
+              // Strafe perpendicular to current angle (90 degrees counterclockwise)
+              newX = currentPosition.x + distance * Math.cos(radians + Math.PI / 2)
+              newY = currentPosition.y + distance * Math.sin(radians + Math.PI / 2)
+              break
+            case "strafe-right":
+              // Strafe perpendicular to current angle (90 degrees clockwise)
+              newX = currentPosition.x + distance * Math.cos(radians - Math.PI / 2)
+              newY = currentPosition.y + distance * Math.sin(radians - Math.PI / 2)
+              break
+          }
+
           currentPosition = { x: Math.max(9, Math.min(135, newX)), y: Math.max(9, Math.min(135, newY)) }
           setRobotPosition(currentPosition)
           await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -122,26 +161,47 @@ export default function Playground({ project }: { project: Project }) {
         currentAngle = (currentAngle + degrees * direction) % 360
         setRobotAngle(currentAngle)
         await new Promise((resolve) => setTimeout(resolve, 500))
+      } else if (node.type === "pathFollowNode") {
+        // Follow path through waypoints
+        const waypoints = node.data.waypoints || [[24, 0], [48, 0], [72, 0]]
+        for (const waypoint of waypoints) {
+          const [relativeX, relativeY] = waypoint
+          const newX = currentPosition.x + relativeX
+          const newY = currentPosition.y + relativeY
+          currentPosition = { x: Math.max(9, Math.min(135, newX)), y: Math.max(9, Math.min(135, newY)) }
+          setRobotPosition(currentPosition)
+          await new Promise((resolve) => setTimeout(resolve, 800))
+        }
       } else if (node.type === "waitNode") {
         const duration = node.data.duration || 1000
         await new Promise((resolve) => setTimeout(resolve, duration))
       }
     }
 
-    setIsRunning(false)
-  }, [nodes, edges])
+    // If loop mode and should continue, wait a bit then run again
+    if (shouldContinueLoop) {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      executeFlow()
+    } else {
+      setIsRunning(false)
+      setShouldContinueLoop(false)
+    }
+  }, [nodes, edges, shouldContinueLoop])
 
   const handleRun = () => {
     setIsRunning(true)
+    setShouldContinueLoop(loopMode)
     executeFlow()
   }
 
   const handleStop = () => {
     setIsRunning(false)
+    setShouldContinueLoop(false)
   }
 
   const handleReset = () => {
     setIsRunning(false)
+    setShouldContinueLoop(false)
     setRobotPosition({ x: 72, y: 72 })
     setRobotAngle(0)
   }
@@ -156,7 +216,36 @@ export default function Playground({ project }: { project: Project }) {
             <h2 className={cn("text-lg font-semibold text-white", geist.className)}>{project.name}</h2>
             <p className="text-xs text-zinc-500">Flow Builder</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {/* Loop Mode Toggle */}
+            <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+              <button
+                onClick={() => setLoopMode(false)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded px-2 py-1 text-xs font-semibold transition-all",
+                  !loopMode
+                    ? "bg-white/10 text-white"
+                    : "text-zinc-400 hover:text-white"
+                )}
+              >
+                <PlayCircle className="h-3.5 w-3.5" />
+                Once
+              </button>
+              <button
+                onClick={() => setLoopMode(true)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded px-2 py-1 text-xs font-semibold transition-all",
+                  loopMode
+                    ? "bg-white/10 text-white"
+                    : "text-zinc-400 hover:text-white"
+                )}
+              >
+                <Repeat className="h-3.5 w-3.5" />
+                Loop
+              </button>
+            </div>
+
+            {/* Run/Stop Button */}
             {!isRunning ? (
               <button
                 onClick={handleRun}
@@ -174,6 +263,7 @@ export default function Playground({ project }: { project: Project }) {
                 Stop
               </button>
             )}
+
             <button
               onClick={handleReset}
               className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10"
@@ -181,6 +271,7 @@ export default function Playground({ project }: { project: Project }) {
               <RotateCcw className="h-4 w-4" />
               Reset
             </button>
+
             <button
               onClick={() => setFieldVisible(!fieldVisible)}
               className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10"
@@ -229,6 +320,7 @@ export default function Playground({ project }: { project: Project }) {
               selectedNode={selectedNode}
               onClose={() => setSelectedNode(null)}
               onUpdate={handleUpdateNode}
+              onDelete={handleDeleteNode}
             />
           )}
         </div>
@@ -245,11 +337,40 @@ export default function Playground({ project }: { project: Project }) {
             className="w-[500px] border-l border-white/10 bg-gradient-to-br from-zinc-950 to-black"
           >
             <div className="border-b border-white/10 px-6 py-4">
-              <h3 className={cn("text-lg font-semibold text-white", geist.className)}>Field Preview</h3>
-              <p className="text-xs text-zinc-500">144" × 144" FTC Field</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className={cn("text-lg font-semibold text-white", geist.className)}>Field Preview</h3>
+                  <p className="text-xs text-zinc-500">144" × 144" FTC Field</p>
+                </div>
+                {loopMode && isRunning && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="flex items-center gap-2 rounded-lg border border-[#e78a53]/20 bg-[#e78a53]/10 px-3 py-1.5"
+                  >
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                    >
+                      <Repeat className="h-3.5 w-3.5 text-[#e78a53]" />
+                    </motion.div>
+                    <span className="text-xs font-semibold text-[#e78a53]">Loop Mode</span>
+                  </motion.div>
+                )}
+              </div>
             </div>
             <div className="flex items-center justify-center p-6">
-              <FieldVisualization robotPosition={robotPosition} robotAngle={robotAngle} isRunning={isRunning} />
+              <FieldWithPathEditor
+                robotPosition={robotPosition}
+                robotAngle={robotAngle}
+                isRunning={isRunning}
+                selectedNode={selectedNode}
+                onUpdatePath={(waypoints) => {
+                  if (selectedNode && selectedNode.type === "pathFollowNode") {
+                    handleUpdateNode(selectedNode.id, { ...selectedNode.data, waypoints })
+                  }
+                }}
+              />
             </div>
           </motion.div>
         )}

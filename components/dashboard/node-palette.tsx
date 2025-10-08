@@ -1,23 +1,30 @@
 "use client"
 
 import { useState } from "react"
-import { Move, RotateCw, Timer, Cpu, Radio, ChevronDown } from "lucide-react"
+import { Move, RotateCw, Timer, ChevronDown, TrendingUp, StopCircle } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
 const nodeTemplates = [
   {
     type: "moveNode",
-    label: "Move Forward",
+    label: "Move",
     icon: Move,
     color: "#e78a53",
-    data: { label: "Move Forward", distance: 24 },
+    data: { label: "Move", distance: 24, speed: 0.5, moveType: "forward" },
   },
   {
     type: "turnNode",
     label: "Turn",
     icon: RotateCw,
     color: "#f0a36f",
-    data: { label: "Turn", degrees: 90 },
+    data: { label: "Turn", degrees: 90, direction: "right" },
+  },
+  {
+    type: "pathFollowNode",
+    label: "Path Follow",
+    icon: TrendingUp,
+    color: "#a78bfa",
+    data: { label: "Path Follow", waypoints: [[24, 0], [48, 0], [72, 0]] },
   },
   {
     type: "waitNode",
@@ -27,18 +34,11 @@ const nodeTemplates = [
     data: { label: "Wait", duration: 1000 },
   },
   {
-    type: "servoNode",
-    label: "Servo",
-    icon: Cpu,
-    color: "#a78bfa",
-    data: { label: "Servo", position: 0.5 },
-  },
-  {
-    type: "sensorNode",
-    label: "Sensor",
-    icon: Radio,
-    color: "#fbbf24",
-    data: { label: "Sensor", sensorType: "Distance" },
+    type: "stopNode",
+    label: "Stop",
+    icon: StopCircle,
+    color: "#ef4444",
+    data: { label: "Stop" },
   },
 ]
 

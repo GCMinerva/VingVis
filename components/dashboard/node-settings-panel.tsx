@@ -1,6 +1,6 @@
 "use client"
 
-import { X, Settings } from "lucide-react"
+import { X, Settings, Trash2 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { geist } from "@/lib/fonts"
@@ -9,9 +9,10 @@ type NodeSettingsPanelProps = {
   selectedNode: any
   onClose: () => void
   onUpdate: (nodeId: string, data: any) => void
+  onDelete: (nodeId: string) => void
 }
 
-export default function NodeSettingsPanel({ selectedNode, onClose, onUpdate }: NodeSettingsPanelProps) {
+export default function NodeSettingsPanel({ selectedNode, onClose, onUpdate, onDelete }: NodeSettingsPanelProps) {
   if (!selectedNode) return null
 
   const handleUpdate = (field: string, value: any) => {
@@ -19,6 +20,13 @@ export default function NodeSettingsPanel({ selectedNode, onClose, onUpdate }: N
       ...selectedNode.data,
       [field]: value,
     })
+  }
+
+  const handleDelete = () => {
+    if (selectedNode.type !== "startNode") {
+      onDelete(selectedNode.id)
+      onClose()
+    }
   }
 
   return (
@@ -45,19 +53,20 @@ export default function NodeSettingsPanel({ selectedNode, onClose, onUpdate }: N
         </div>
 
         {/* Settings Content */}
-        <div className="overflow-y-auto p-4">
-          {/* Node Label */}
-          <div className="mb-6">
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-zinc-400">
-              Node Label
-            </label>
-            <input
-              type="text"
-              value={selectedNode.data.label || ""}
-              onChange={(e) => handleUpdate("label", e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-[#e78a53] focus:ring-2 focus:ring-[#e78a53]/20"
-            />
-          </div>
+        <div className="flex h-[calc(100%-60px)] flex-col">
+          <div className="flex-1 overflow-y-auto p-4">
+            {/* Node Label */}
+            <div className="mb-6">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                Node Label
+              </label>
+              <input
+                type="text"
+                value={selectedNode.data.label || ""}
+                onChange={(e) => handleUpdate("label", e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-[#e78a53] focus:ring-2 focus:ring-[#e78a53]/20"
+              />
+            </div>
 
           {/* Move Node Settings */}
           {selectedNode.type === "moveNode" && (
@@ -175,6 +184,44 @@ export default function NodeSettingsPanel({ selectedNode, onClose, onUpdate }: N
             </>
           )}
 
+          {/* Path Follow Node Settings */}
+          {selectedNode.type === "pathFollowNode" && (
+            <div className="mb-4">
+              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                Waypoints (relative X, Y)
+              </label>
+              <div className="text-xs text-zinc-500 mb-2">
+                Each waypoint is relative to current position
+              </div>
+              {(selectedNode.data.waypoints || [[24, 0], [48, 0], [72, 0]]).map((waypoint: number[], index: number) => (
+                <div key={index} className="mb-2 flex gap-2">
+                  <input
+                    type="number"
+                    value={waypoint[0]}
+                    onChange={(e) => {
+                      const newWaypoints = [...(selectedNode.data.waypoints || [[24, 0], [48, 0], [72, 0]])]
+                      newWaypoints[index][0] = parseFloat(e.target.value)
+                      handleUpdate("waypoints", newWaypoints)
+                    }}
+                    className="flex-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-white outline-none focus:border-[#a78bfa]"
+                    placeholder="X"
+                  />
+                  <input
+                    type="number"
+                    value={waypoint[1]}
+                    onChange={(e) => {
+                      const newWaypoints = [...(selectedNode.data.waypoints || [[24, 0], [48, 0], [72, 0]])]
+                      newWaypoints[index][1] = parseFloat(e.target.value)
+                      handleUpdate("waypoints", newWaypoints)
+                    }}
+                    className="flex-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-white outline-none focus:border-[#a78bfa]"
+                    placeholder="Y"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Wait Node Settings */}
           {selectedNode.type === "waitNode" && (
             <div className="mb-4">
@@ -191,69 +238,19 @@ export default function NodeSettingsPanel({ selectedNode, onClose, onUpdate }: N
               />
             </div>
           )}
+          </div>
 
-          {/* Servo Node Settings */}
-          {selectedNode.type === "servoNode" && (
-            <>
-              <div className="mb-4">
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                  Servo Name
-                </label>
-                <input
-                  type="text"
-                  value={selectedNode.data.servoName || "servo1"}
-                  onChange={(e) => handleUpdate("servoName", e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-[#e78a53] focus:ring-2 focus:ring-[#e78a53]/20"
-                />
-              </div>
-              <div className="mb-4">
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                  Position (0-1)
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={selectedNode.data.position || 0.5}
-                  onChange={(e) => handleUpdate("position", parseFloat(e.target.value))}
-                  className="w-full accent-[#a78bfa]"
-                />
-                <div className="mt-1 text-xs text-zinc-500">{(selectedNode.data.position || 0.5).toFixed(2)}</div>
-              </div>
-            </>
-          )}
-
-          {/* Sensor Node Settings */}
-          {selectedNode.type === "sensorNode" && (
-            <>
-              <div className="mb-4">
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                  Sensor Type
-                </label>
-                <select
-                  value={selectedNode.data.sensorType || "Distance"}
-                  onChange={(e) => handleUpdate("sensorType", e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-[#e78a53] focus:ring-2 focus:ring-[#e78a53]/20"
-                >
-                  <option value="Distance">Distance Sensor</option>
-                  <option value="Color">Color Sensor</option>
-                  <option value="Touch">Touch Sensor</option>
-                  <option value="Gyro">Gyro Sensor</option>
-                </select>
-              </div>
-              <div className="mb-4">
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                  Sensor Port
-                </label>
-                <input
-                  type="text"
-                  value={selectedNode.data.sensorPort || "0"}
-                  onChange={(e) => handleUpdate("sensorPort", e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-[#e78a53] focus:ring-2 focus:ring-[#e78a53]/20"
-                />
-              </div>
-            </>
+          {/* Delete Button */}
+          {selectedNode.type !== "startNode" && (
+            <div className="border-t border-white/10 p-4">
+              <button
+                onClick={handleDelete}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-400 transition-all hover:bg-red-500/20 hover:text-red-300"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete Node
+              </button>
+            </div>
           )}
         </div>
       </motion.div>
