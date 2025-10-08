@@ -6,69 +6,6 @@ import { useMemo } from "react"
 import { Check, Cpu, Radio } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { geist } from "@/lib/fonts"
-import { buildRobotKeyframes, orientPath, sampleCubicBezier, samplePolyline } from "@/lib/path-keyframes"
-
-const FEATURES_SAMPLE_COUNT = 90
-const FEATURES_BASELINE_FRACTION = 0.58
-const FEATURES_REVEAL_START = 0.64
-const FEATURES_HANDOFF_PAUSE = 0.6
-const FEATURES_OFFSET_X = 24
-const FEATURES_OFFSET_Y = 120
-const FEATURES_ROBOT_RADIUS = 28
-
-const FEATURES_BASELINE_SEGMENTS = [
-  { x: 32, y: 184 },
-  { x: 150, y: 184 },
-  { x: 150, y: 140 },
-  { x: 220, y: 140 },
-  { x: 220, y: 80 },
-]
-
-const FEATURES_OPTIMIZED_CONTROL_POINTS = [
-  { x: 32, y: 184 },
-  { x: 120, y: 160 },
-  { x: 184, y: 120 },
-  { x: 220, y: 80 },
-]
-
-const toFeatureCssSpace = ({ x, y }: { x: number; y: number }) => ({
-  x: x - FEATURES_ROBOT_RADIUS - FEATURES_OFFSET_X,
-  y: y - FEATURES_ROBOT_RADIUS - FEATURES_OFFSET_Y,
-})
-
-const createFeatureRobotAnimation = () => {
-  const baselineSamples = Math.round(FEATURES_SAMPLE_COUNT * FEATURES_BASELINE_FRACTION)
-  const optimizedSamples = FEATURES_SAMPLE_COUNT - baselineSamples + 1
-
-  const baselinePath = samplePolyline(FEATURES_BASELINE_SEGMENTS, baselineSamples).map(toFeatureCssSpace)
-  const optimizedPath = sampleCubicBezier(
-    FEATURES_OPTIMIZED_CONTROL_POINTS[0],
-    FEATURES_OPTIMIZED_CONTROL_POINTS[1],
-    FEATURES_OPTIMIZED_CONTROL_POINTS[2],
-    FEATURES_OPTIMIZED_CONTROL_POINTS[3],
-    optimizedSamples,
-  ).map(toFeatureCssSpace)
-
-  const keyframes = buildRobotKeyframes({
-    baseline: orientPath(baselinePath),
-    optimized: orientPath(optimizedPath),
-    baselineFraction: FEATURES_BASELINE_FRACTION,
-    revealStart: FEATURES_REVEAL_START,
-    handoffPause: FEATURES_HANDOFF_PAUSE,
-  })
-
-  return {
-    robotMotion: keyframes.keyframes,
-    robotTransition: {
-      duration: 12,
-      repeat: Infinity,
-      ease: "easeInOut" as const,
-      times: keyframes.times,
-    },
-  }
-}
-
-const FEATURES_ROBOT_ANIMATION = createFeatureRobotAnimation()
 
 const FlowPreview = dynamic(() => import("./feature-flow-preview"), {
   ssr: false,
@@ -122,99 +59,186 @@ const BentoCard = ({ eyebrow, title, description, className, contentClassName, c
 }
 
 const RobotPathAnimation = () => {
-  const { robotMotion, robotTransition } = FEATURES_ROBOT_ANIMATION
-
   return (
-    <div className="relative h-[340px] w-full overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-br from-zinc-900/80 via-black/80 to-zinc-900/60">
-      <div className="absolute inset-0">
-        <div className="absolute -left-24 -top-32 h-64 w-64 rounded-full bg-[#e78a53]/15 blur-3xl" />
-        <div className="absolute -bottom-32 -right-24 h-72 w-72 rounded-full bg-[#f0a36f]/10 blur-[100px]" />
+    <div className="relative h-[400px] w-full overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-zinc-950 via-black to-zinc-900">
+      {/* Background gradients */}
+      <div className="absolute inset-0 opacity-40">
+        <div className="absolute left-1/4 top-0 h-[300px] w-[300px] rounded-full bg-[#e78a53]/20 blur-[120px]" />
+        <div className="absolute bottom-0 right-1/4 h-[250px] w-[250px] rounded-full bg-[#f0a36f]/15 blur-[100px]" />
       </div>
-      <div className="absolute inset-6 overflow-hidden rounded-[22px] border border-white/10 bg-black/60 shadow-[0_40px_120px_rgba(231,138,83,0.08)]">
-        <div className="pointer-events-none absolute inset-0 opacity-25">
-          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:48px_48px]" />
+
+      {/* Main content */}
+      <div className="relative h-full w-full p-8">
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Path Optimization</h3>
+            <p className="mt-1 text-sm text-zinc-400">Baseline vs Optimized Route</p>
+          </div>
+          <div className="flex gap-4">
+            <motion.div
+              className="flex items-center gap-2"
+              animate={{ opacity: [1, 1, 0.4, 0.4] }}
+              transition={{ duration: 10, repeat: Infinity, times: [0, 0.45, 0.55, 1] }}
+            >
+              <div className="h-3 w-3 rounded-full border-2 border-white/60" />
+              <span className="text-xs text-white/70">Baseline Path</span>
+            </motion.div>
+            <motion.div
+              className="flex items-center gap-2"
+              animate={{ opacity: [0, 0, 1, 1] }}
+              transition={{ duration: 10, repeat: Infinity, times: [0, 0.5, 0.6, 1] }}
+            >
+              <div className="h-3 w-3 rounded-full bg-[#e78a53]" />
+              <span className="text-xs text-[#fcd7b7]">Optimized Path</span>
+            </motion.div>
+          </div>
         </div>
-        <div className="relative h-full w-full">
-          <svg
-            viewBox="0 0 320 220"
-            className="absolute inset-0 h-full w-full"
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path
-              d="M32 184 L150 184 L150 140 L220 140 L220 80"
-              stroke="rgba(255,255,255,0.12)"
-              strokeWidth={5}
-            />
+
+        {/* Animation canvas */}
+        <div className="relative h-[240px] w-full rounded-xl border border-white/5 bg-black/40 p-6">
+          {/* Grid background */}
+          <div className="absolute inset-0 opacity-20">
+            <div className="h-full w-full bg-[linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[length:40px_40px]" />
+          </div>
+
+          {/* SVG paths and robot */}
+          <svg viewBox="0 0 600 180" className="absolute inset-6 h-[calc(100%-48px)] w-[calc(100%-48px)]" fill="none">
+            <defs>
+              <filter id="pathGlow">
+                <feGaussianBlur stdDeviation="4" result="coloredBlur" />
+                <feMerge>
+                  <feMergeNode in="coloredBlur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+
+            {/* Start point */}
+            <circle cx="50" cy="140" r="8" fill="#e78a53" opacity="0.3" />
+            <circle cx="50" cy="140" r="4" fill="#e78a53" />
+
+            {/* End point */}
+            <circle cx="550" cy="40" r="8" fill="#4ade80" opacity="0.3" />
+            <circle cx="550" cy="40" r="4" fill="#4ade80" />
+
+            {/* Baseline path - jagged/angular */}
             <motion.path
-              d="M32 184 L150 184 L150 140 L220 140 L220 80"
-              stroke="#f6f6f6"
-              strokeWidth={5}
+              d="M 50 140 L 180 140 L 180 100 L 320 100 L 320 60 L 450 60 L 450 40 L 550 40"
+              stroke="rgba(255,255,255,0.2)"
+              strokeWidth="3"
               strokeLinecap="round"
               strokeLinejoin="round"
+              strokeDasharray="10 5"
               initial={{ pathLength: 0, opacity: 0 }}
-              animate={{ pathLength: [0, 1, 1, 1], opacity: [0, 1, 0.2, 0.2] }}
-              transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", times: [0, 0.52, 0.62, 1] }}
+              animate={{ pathLength: [0, 1, 1, 1], opacity: [0, 0.6, 0.2, 0.2] }}
+              transition={{ duration: 10, repeat: Infinity, ease: "linear", times: [0, 0.45, 0.52, 1] }}
             />
+
+            {/* Optimized path - smooth curve */}
             <motion.path
-              d="M32 184 C120 160 184 120 220 80"
+              d="M 50 140 Q 200 130 350 80 T 550 40"
               stroke="#e78a53"
-              strokeWidth={6}
+              strokeWidth="4"
               strokeLinecap="round"
-              strokeLinejoin="round"
+              filter="url(#pathGlow)"
               initial={{ pathLength: 0, opacity: 0 }}
               animate={{ pathLength: [0, 0, 1, 1], opacity: [0, 0, 1, 1] }}
-              transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", times: [0, 0.6, 0.85, 1] }}
+              transition={{ duration: 10, repeat: Infinity, ease: "easeOut", times: [0, 0.5, 0.75, 1] }}
             />
+
+            {/* Robot - follows the paths */}
+            <motion.g
+              initial={{ x: 50, y: 140 }}
+              animate={{
+                x: [50, 180, 180, 320, 320, 450, 450, 500, 550, 550, 550],
+                y: [140, 140, 100, 100, 60, 60, 40, 40, 40, 40, 40],
+              }}
+              transition={{
+                duration: 5,
+                repeat: Infinity,
+                ease: "linear",
+                times: [0, 0.15, 0.2, 0.3, 0.35, 0.42, 0.45, 0.48, 0.5, 0.9, 1],
+                repeatDelay: 5,
+              }}
+            >
+              {/* Robot body */}
+              <rect x="-12" y="-12" width="24" height="24" rx="6" fill="url(#robotGradient)" />
+              <defs>
+                <linearGradient id="robotGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#e78a53" />
+                  <stop offset="100%" stopColor="#f0a36f" />
+                </linearGradient>
+              </defs>
+              {/* Robot eye */}
+              <circle cx="0" cy="-4" r="3" fill="white" />
+              <circle cx="0" cy="2" r="4" fill="white" opacity="0.6" />
+            </motion.g>
+
+            {/* Second robot - follows optimized path */}
+            <motion.g
+              initial={{ opacity: 0 }}
+              animate={{
+                opacity: [0, 0, 1, 1, 1, 1],
+              }}
+              transition={{
+                duration: 5,
+                repeat: Infinity,
+                times: [0, 0.5, 0.52, 0.95, 0.98, 1],
+                repeatDelay: 5,
+              }}
+            >
+              <motion.g
+                animate={{
+                  x: [50, 150, 250, 350, 450, 550],
+                  y: [140, 132, 110, 85, 58, 40],
+                }}
+                transition={{
+                  duration: 2.5,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                  delay: 5,
+                  repeatDelay: 7.5,
+                }}
+              >
+                {/* Optimized robot body */}
+                <rect x="-12" y="-12" width="24" height="24" rx="6" fill="url(#robotGradient2)" />
+                <defs>
+                  <linearGradient id="robotGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#f0a36f" />
+                    <stop offset="100%" stopColor="#e78a53" />
+                  </linearGradient>
+                </defs>
+                {/* Robot eye */}
+                <circle cx="0" cy="-4" r="3" fill="white" />
+                <circle cx="0" cy="2" r="4" fill="white" opacity="0.6" />
+                {/* Speed trail */}
+                <motion.circle
+                  cx="0"
+                  cy="0"
+                  r="16"
+                  fill="none"
+                  stroke="#e78a53"
+                  strokeWidth="2"
+                  opacity="0.4"
+                  animate={{ r: [12, 20], opacity: [0.6, 0] }}
+                  transition={{ duration: 0.8, repeat: Infinity }}
+                />
+              </motion.g>
+            </motion.g>
           </svg>
+        </div>
 
-          <motion.div
-            className="absolute left-10 top-[60px] flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-white/80 backdrop-blur"
-            animate={{ opacity: [1, 1, 0, 0] }}
-            transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", times: [0, 0.48, 0.6, 1] }}
-          >
-            Baseline Path
-          </motion.div>
-
-          <motion.div
-            className="absolute right-10 top-[60px] flex items-center gap-2 rounded-full bg-[#e78a53]/20 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-[#fcd7b7]"
-            animate={{ opacity: [0, 0, 1, 1] }}
-            transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", times: [0, 0.6, 0.72, 1] }}
-          >
-            Optimized Path
-          </motion.div>
-
-          <motion.div
-            animate={robotMotion}
-            transition={robotTransition}
-            className="absolute left-6 top-[120px] flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#e78a53] via-[#f0a36f] to-[#e78a53] shadow-[0_20px_40px_rgba(231,138,83,0.35)]"
-          >
-            <div className="relative flex size-8 items-center justify-center rounded-lg bg-black/60">
-              <div className="absolute -top-1 size-2 rounded-full bg-white" />
-              <div className="size-3 rounded-sm bg-white/80" />
-            </div>
-          </motion.div>
-
-          <div className="absolute inset-x-10 bottom-2 flex items-center justify-between text-xs text-zinc-400">
-            <div>
-              <p className="font-semibold uppercase tracking-[0.3em] text-white/70">Step timeline</p>
-              <p className="mt-1 text-[11px] text-zinc-400">
-                Baseline route simulates drift and slow turns before the optimizer redraws a faster spline to the same
-                target.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <div className="flex items-center gap-1.5">
-                <span className="inline-flex h-2 w-2 rounded-full bg-white/40" />
-                <span className="text-[11px] text-white/70">Original</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="inline-flex h-2 w-2 rounded-full bg-[#e78a53]" />
-                <span className="text-[11px] text-white/90">Optimized</span>
-              </div>
-            </div>
+        {/* Footer description */}
+        <div className="mt-6 space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="h-1 w-12 rounded-full bg-gradient-to-r from-white/40 to-transparent" />
+            <p className="text-xs font-semibold uppercase tracking-wider text-white/60">Step Timeline</p>
           </div>
+          <p className="text-sm leading-relaxed text-zinc-400">
+            Baseline route simulates drift and slow turns before the optimizer redraws a faster spline to the same
+            target.
+          </p>
         </div>
       </div>
     </div>

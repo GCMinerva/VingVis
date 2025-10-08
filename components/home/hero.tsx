@@ -213,24 +213,49 @@ export default function Hero() {
                   Optimized
                 </motion.div>
               </div>
-              <div className="mt-6 flex items-center justify-between text-xs text-zinc-400">
-                <div>
+              <motion.div
+                className="mt-6 space-y-3"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.55, delay: 0.5 }}
+              >
+                <div className="flex items-center justify-between">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/70">Step timeline</p>
-                  <p className="mt-1 max-w-[220px] text-[11px] text-zinc-400">
-                    Robot walks the baseline first, then reroutes through the optimizer to win back precious seconds.
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <motion.span
+                      className="inline-flex items-center gap-1.5 text-[10px]"
+                      animate={{ opacity: [1, 1, 0.5, 0.5], color: ["rgba(255,255,255,0.7)", "rgba(255,255,255,0.7)", "rgba(255,255,255,0.4)", "rgba(255,255,255,0.4)"] }}
+                      transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", times: [0, 0.58, 0.68, 1] }}
+                    >
+                      <motion.span
+                        className="inline-flex h-2 w-2 rounded-full bg-white/40"
+                        animate={{ scale: [1, 1, 0.8, 0.8], opacity: [1, 1, 0.5, 0.5] }}
+                        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", times: [0, 0.58, 0.68, 1] }}
+                      />
+                      Original
+                    </motion.span>
+                    <motion.span
+                      className="inline-flex items-center gap-1.5 text-[10px]"
+                      animate={{ opacity: [0.5, 0.5, 1, 1], color: ["rgba(255,255,255,0.4)", "rgba(255,255,255,0.4)", "rgba(252,215,183,1)", "rgba(252,215,183,1)"] }}
+                      transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", times: [0, 0.58, 0.68, 1] }}
+                    >
+                      <motion.span
+                        className="inline-flex h-2 w-2 rounded-full bg-[#e78a53]"
+                        animate={{ scale: [0.8, 0.8, 1.2, 1], opacity: [0.5, 0.5, 1, 1] }}
+                        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", times: [0, 0.58, 0.68, 1] }}
+                      />
+                      Optimized
+                    </motion.span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="inline-flex items-center gap-1.5 text-[10px] text-white/70">
-                    <span className="inline-flex h-2 w-2 rounded-full bg-white/40" />
-                    Original
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 text-[10px] text-white/90">
-                    <span className="inline-flex h-2 w-2 rounded-full bg-[#e78a53]" />
-                    Optimized
-                  </span>
-                </div>
-              </div>
+                <motion.p
+                  className="text-[11px] leading-relaxed text-zinc-400"
+                  animate={{ opacity: [0.7, 0.7, 0.9, 0.9] }}
+                  transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", times: [0, 0.58, 0.68, 1] }}
+                >
+                  Robot walks the baseline first, then reroutes through the optimizer to win back precious seconds.
+                </motion.p>
+              </motion.div>
             </div>
           </div>
         </div>
