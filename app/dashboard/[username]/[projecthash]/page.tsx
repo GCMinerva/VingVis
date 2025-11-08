@@ -5,9 +5,7 @@ import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
 import { Navbar } from "@/components/navbar"
-import { HardwareConfigPanel, HardwareConfig } from "@/components/hardware-config-panel"
-import { FieldPreview } from "@/components/field-preview"
-import { CustomNode, StartNode, nodeStyles } from "@/components/custom-nodes"
+import { HardwareConfig } from "@/components/hardware-config-panel"
 import ReactFlow, {
   Node,
   Edge,
@@ -17,29 +15,33 @@ import ReactFlow, {
   useEdgesState,
   addEdge,
   Connection,
-  MiniMap,
-  Panel,
   BackgroundVariant,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Save,
   Play,
   Download,
-  Navigation,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
   RotateCw,
   Timer,
-  Zap,
+  Hand,
+  Grip,
+  Eye,
   Code,
-  Variable,
-  Layers
+  Plus,
+  Trash2,
+  Settings,
 } from "lucide-react"
 
 type Project = {
@@ -51,32 +53,48 @@ type Project = {
   hardware_config?: HardwareConfig
 }
 
-const nodeTypesConfig = {
-  start: { label: 'Start', icon: Play },
-  move: { label: 'Move Forward', icon: Navigation, description: 'Move robot forward/backward' },
-  turn: { label: 'Turn', icon: RotateCw, description: 'Rotate robot left/right' },
-  wait: { label: 'Wait', icon: Timer, description: 'Pause execution' },
-  action: { label: 'Action', icon: Zap, description: 'Execute servo/mechanism action' },
-  variable: { label: 'Set Variable', icon: Variable, description: 'Store a value' },
-  custom: { label: 'Custom Code', icon: Code, description: 'Write custom Java code' },
-}
-
-const customNodeTypes = {
-  default: CustomNode,
-  start: StartNode,
+// FTC-specific node configurations
+const FTC_NODES = {
+  movement: [
+    { id: 'moveForward', label: 'Drive Forward', icon: ArrowUp, color: 'from-blue-500 to-blue-600' },
+    { id: 'moveBackward', label: 'Drive Backward', icon: ArrowDown, color: 'from-blue-500 to-blue-600' },
+    { id: 'strafeLeft', label: 'Strafe Left', icon: ArrowLeft, color: 'from-blue-500 to-blue-600' },
+    { id: 'strafeRight', label: 'Strafe Right', icon: ArrowRight, color: 'from-blue-500 to-blue-600' },
+    { id: 'turnLeft', label: 'Turn Left', icon: RotateCw, color: 'from-purple-500 to-purple-600' },
+    { id: 'turnRight', label: 'Turn Right', icon: RotateCw, color: 'from-purple-500 to-purple-600' },
+  ],
+  actions: [
+    { id: 'clawOpen', label: 'Open Claw', icon: Hand, color: 'from-pink-500 to-pink-600' },
+    { id: 'clawClose', label: 'Close Claw', icon: Grip, color: 'from-pink-500 to-pink-600' },
+    { id: 'armUp', label: 'Lift Up', icon: ArrowUp, color: 'from-orange-500 to-orange-600' },
+    { id: 'armDown', label: 'Lift Down', icon: ArrowDown, color: 'from-orange-500 to-orange-600' },
+    { id: 'intake', label: 'Run Intake', icon: Play, color: 'from-green-500 to-green-600' },
+  ],
+  control: [
+    { id: 'wait', label: 'Wait / Pause', icon: Timer, color: 'from-yellow-500 to-yellow-600' },
+    { id: 'custom', label: 'Custom Code', icon: Code, color: 'from-indigo-500 to-indigo-600' },
+  ]
 }
 
 const initialNodes: Node[] = [
   {
     id: 'start-1',
-    type: 'start',
-    data: { label: 'Start', type: 'start' },
+    type: 'default',
+    data: { label: 'START', nodeType: 'start' },
     position: { x: 250, y: 50 },
-    draggable: true,
+    style: {
+      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+      color: 'white',
+      border: '2px solid #059669',
+      borderRadius: '12px',
+      padding: '16px 24px',
+      fontWeight: 'bold',
+      fontSize: '16px',
+    },
   },
 ]
 
-export default function ProjectEditorPage() {
+export default function FTCProjectEditor() {
   const params = useParams()
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
@@ -87,30 +105,18 @@ export default function ProjectEditorPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
-  const [robotPosition, setRobotPosition] = useState({ x: 72, y: 72, heading: 0 })
-  const [hardwareConfig, setHardwareConfig] = useState<HardwareConfig>({
-    motors: [],
-    servos: [],
-    i2cDevices: []
-  })
+  const [activeCategory, setActiveCategory] = useState<'movement' | 'actions' | 'control'>('movement')
 
-  // Load initial hardware config from project motor_config
-  useEffect(() => {
-    if (project?.motor_config) {
-      const motors = Object.entries(project.motor_config).map(([key, name], index) => ({
-        id: key,
-        name: String(name),
-        port: index,
-        direction: 'FORWARD' as const,
-        type: 'DC_MOTOR' as const
-      }))
-      setHardwareConfig(prev => ({ ...prev, motors }))
-    }
-
-    if (project?.hardware_config) {
-      setHardwareConfig(project.hardware_config)
-    }
-  }, [project])
+  // Hardware config state
+  const [motors, setMotors] = useState<Array<{name: string, port: number}>>([
+    { name: 'motorFL', port: 0 },
+    { name: 'motorFR', port: 1 },
+    { name: 'motorBL', port: 2 },
+    { name: 'motorBR', port: 3 },
+  ])
+  const [servos, setServos] = useState<Array<{name: string, port: number}>>([
+    { name: 'claw', port: 0 },
+  ])
 
   useEffect(() => {
     const guestMode = localStorage.getItem('guestMode') === 'true'
@@ -141,7 +147,6 @@ export default function ProjectEditorPage() {
 
         if (foundProject) {
           setProject(foundProject)
-
           if (foundProject.workflow_data && foundProject.workflow_data.nodes) {
             setNodes(foundProject.workflow_data.nodes)
             setEdges(foundProject.workflow_data.edges || [])
@@ -205,7 +210,6 @@ export default function ProjectEditorPage() {
               return {
                 ...p,
                 workflow_data: { nodes, edges },
-                hardware_config: hardwareConfig,
                 updated_at: new Date().toISOString(),
               }
             }
@@ -218,7 +222,6 @@ export default function ProjectEditorPage() {
           .from('projects')
           .update({
             workflow_data: { nodes, edges },
-            hardware_config: hardwareConfig,
           })
           .eq('id', project.id)
 
@@ -231,20 +234,28 @@ export default function ProjectEditorPage() {
     }
   }
 
-  const addNode = (type: keyof typeof nodeTypesConfig) => {
-    const config = nodeTypesConfig[type]
+  const addNodeToCanvas = (nodeConfig: any) => {
     const newNode: Node = {
-      id: `${type}-${Date.now()}`,
-      type: type === 'start' ? 'start' : 'default',
+      id: `${nodeConfig.id}-${Date.now()}`,
+      type: 'default',
       data: {
-        label: config.label,
-        description: config.description,
-        type: type,
+        label: nodeConfig.label,
+        nodeType: nodeConfig.id,
         config: {}
       },
       position: {
-        x: Math.random() * 300 + 200,
-        y: Math.random() * 300 + 200
+        x: Math.random() * 400 + 100,
+        y: Math.random() * 400 + 150
+      },
+      style: {
+        background: `linear-gradient(135deg, ${nodeConfig.color})`,
+        color: 'white',
+        border: '2px solid rgba(255,255,255,0.3)',
+        borderRadius: '8px',
+        padding: '12px 20px',
+        fontWeight: '600',
+        fontSize: '14px',
+        minWidth: '150px',
       },
     }
     setNodes((nds) => [...nds, newNode])
@@ -271,46 +282,42 @@ export default function ProjectEditorPage() {
         return node
       })
     )
+
+    setSelectedNode(prev => prev ? {
+      ...prev,
+      data: {
+        ...prev.data,
+        config: { ...prev.data.config, [key]: value }
+      }
+    } : null)
   }
 
   const deleteSelectedNode = () => {
-    if (!selectedNode || selectedNode.type === 'start') return
+    if (!selectedNode || selectedNode.data.nodeType === 'start') return
     setNodes((nds) => nds.filter((n) => n.id !== selectedNode.id))
     setSelectedNode(null)
   }
 
-  const generateCode = () => {
+  const exportCode = () => {
     let code = `package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.Servo;
-import com.qualcomm.robotcore.hardware.IMU;
 
 @Autonomous(name = "${project?.name || 'Auto'}", group = "Auto")
 public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')} extends LinearOpMode {
 
-    // Hardware Configuration
+    // Motors
 `
-
-    // Add motor declarations
-    hardwareConfig.motors.forEach(motor => {
+    motors.forEach(motor => {
       code += `    private DcMotor ${motor.name};\n`
     })
 
-    // Add servo declarations
-    hardwareConfig.servos.forEach(servo => {
+    code += `\n    // Servos\n`
+    servos.forEach(servo => {
       code += `    private Servo ${servo.name};\n`
-    })
-
-    // Add I2C device declarations
-    hardwareConfig.i2cDevices.forEach(device => {
-      if (device.type === 'IMU') {
-        code += `    private IMU ${device.name};\n`
-      } else {
-        code += `    // ${device.type}: ${device.name}\n`
-      }
     })
 
     code += `
@@ -318,23 +325,16 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')} extends L
     public void runOpMode() {
         // Initialize hardware
 `
-
-    // Initialize motors
-    hardwareConfig.motors.forEach(motor => {
-      code += `        ${motor.name} = hardwareMap.get(DcMotor.class, "${motor.name}");
-        ${motor.name}.setDirection(DcMotor.Direction.${motor.direction});
-        ${motor.name}.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-`
+    motors.forEach(motor => {
+      code += `        ${motor.name} = hardwareMap.get(DcMotor.class, "${motor.name}");\n`
     })
 
-    // Initialize servos
-    hardwareConfig.servos.forEach(servo => {
-      code += `        ${servo.name} = hardwareMap.get(Servo.class, "${servo.name}");
-`
+    servos.forEach(servo => {
+      code += `        ${servo.name} = hardwareMap.get(Servo.class, "${servo.name}");\n`
     })
 
     code += `
-        telemetry.addData("Status", "Initialized");
+        telemetry.addData("Status", "Ready");
         telemetry.update();
 
         waitForStart();
@@ -342,74 +342,53 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')} extends L
         if (opModeIsActive()) {
 `
 
-    // Generate code for each node in order
-    // Sort nodes by connection order (simple approach: vertical position)
+    // Sort nodes by vertical position
     const sortedNodes = [...nodes]
-      .filter(n => n.type !== 'start')
+      .filter(n => n.data.nodeType !== 'start')
       .sort((a, b) => a.position.y - b.position.y)
 
     sortedNodes.forEach(node => {
       const config = node.data.config || {}
+      const type = node.data.nodeType
 
-      switch (node.data.type) {
-        case 'move':
-          const motorNames = hardwareConfig.motors.map(m => m.name).join(', ')
-          code += `            // ${node.data.label}
-            ${motorNames ? motorNames + '.setPower(' + (config.power || 0.5) + ');' : ''}
-            sleep(${Math.round((parseFloat(config.distance || 24) / 12) * 1000)}); // Approximate timing
-            ${motorNames ? motorNames + '.setPower(0);' : ''}
-`
-          break
-
-        case 'turn':
-          const direction = config.direction === 'right' ? 1 : -1
-          const motor0 = hardwareConfig.motors[0]?.name || 'motorFL'
-          const motor1 = hardwareConfig.motors[1]?.name || 'motorFR'
-          code += `            // ${node.data.label}
-            // Turn ${config.direction || 'left'} ${config.angle || 90} degrees
-            ${motor0}.setPower(${direction * 0.5});
-            ${motor1}.setPower(${-direction * 0.5});
-            sleep(${Math.round((parseFloat(config.angle || 90) / 90) * 500)}); // Approximate timing
-            ${hardwareConfig.motors.map(m => m.name).join(', ')}.setPower(0);
-`
-          break
-
-        case 'wait':
-          code += `            // ${node.data.label}
-            sleep(${Math.round(parseFloat(config.duration || 1) * 1000)});
-`
-          break
-
-        case 'action':
-          code += `            // ${node.data.label}
-            ${config.device || 'servo'}.setPosition(${config.position || 0.5});
-            sleep(500);
-`
-          break
-
-        case 'variable':
-          code += `            // ${node.data.label}
-            // Set variable: ${config.name || 'variable'} = ${config.value || 0}
-`
-          break
-
-        case 'custom':
-          code += `            // Custom code
-            ${config.code || '// Add your code here'}
-`
-          break
+      if (type?.startsWith('move') || type?.includes('strafe')) {
+        const distance = config.distance || 24
+        const power = config.power || 0.5
+        code += `            // ${node.data.label}\n`
+        motors.forEach(m => {
+          code += `            ${m.name}.setPower(${power});\n`
+        })
+        code += `            sleep(${Math.round((distance / 12) * 1000)});\n`
+        motors.forEach(m => {
+          code += `            ${m.name}.setPower(0);\n`
+        })
+        code += `\n`
+      } else if (type?.startsWith('turn')) {
+        const angle = config.angle || 90
+        code += `            // ${node.data.label}\n`
+        code += `            // Turn ${angle} degrees\n`
+        code += `            sleep(${Math.round((angle / 90) * 500)});\n\n`
+      } else if (type === 'wait') {
+        const duration = config.duration || 1
+        code += `            sleep(${Math.round(duration * 1000)});\n\n`
+      } else if (type?.includes('claw')) {
+        const servo = servos[0]?.name || 'claw'
+        const position = type === 'clawOpen' ? 1.0 : 0.0
+        code += `            ${servo}.setPosition(${position});\n`
+        code += `            sleep(500);\n\n`
+      } else if (type === 'custom') {
+        code += `            // Custom code\n`
+        code += `            ${config.code || '// Your code here'}\n\n`
       }
     })
 
-    code += `
-            telemetry.addData("Status", "Complete");
+    code += `            telemetry.addData("Status", "Complete");
             telemetry.update();
         }
     }
 }
 `
 
-    // Download the code
     const blob = new Blob([code], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -421,7 +400,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')} extends L
     URL.revokeObjectURL(url)
   }
 
-  if (authLoading || (loading && !isGuest) || !project) {
+  if (authLoading || loading || !project) {
     return (
       <div className="min-h-screen bg-black flex flex-col">
         <Navbar />
@@ -433,243 +412,209 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')} extends L
   }
 
   return (
-    <div className="h-screen bg-black flex flex-col">
+    <div className="h-screen bg-black flex flex-col overflow-hidden">
       <Navbar />
 
       {/* Top Toolbar */}
-      <div className="bg-background/95 border-b border-border/50 px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div>
-            <h1 className="text-lg font-semibold text-white">{project.name}</h1>
-            <p className="text-xs text-muted-foreground">
-              {project.template_type === 'omni-wheel' ? '4 Omni-Wheel' : '4 Mecanum-Wheel'} Drive
-            </p>
-          </div>
+      <div className="bg-zinc-900/90 border-b border-zinc-800 px-4 py-3 flex items-center justify-between flex-shrink-0">
+        <div>
+          <h1 className="text-lg font-bold text-white">{project.name}</h1>
+          <p className="text-xs text-zinc-400">
+            {project.template_type === 'omni-wheel' ? 'Omni-Wheel' : 'Mecanum'} Drive • FTC Autonomous
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={handleSave} disabled={saving} size="sm">
+          <Button onClick={handleSave} disabled={saving} size="sm" variant="outline">
             <Save className="h-4 w-4 mr-2" />
             {saving ? 'Saving...' : 'Save'}
           </Button>
-          <Button onClick={generateCode} variant="default" size="sm">
+          <Button onClick={exportCode} size="sm">
             <Download className="h-4 w-4 mr-2" />
-            Export Code
+            Export Java Code
           </Button>
         </div>
       </div>
 
-      {/* Main Editor Area */}
-      <div className="flex-1 overflow-hidden">
-        <ResizablePanelGroup direction="horizontal">
-          {/* Left Panel - Hardware Config */}
-          <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
-            <div className="h-full p-3 bg-background/50 overflow-y-auto">
-              <HardwareConfigPanel config={hardwareConfig} onChange={setHardwareConfig} />
+      {/* Main Content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Sidebar - Node Palette */}
+        <div className="w-80 bg-zinc-900/50 border-r border-zinc-800 flex flex-col overflow-hidden">
+          <div className="p-4 border-b border-zinc-800">
+            <h2 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              Add Blocks
+            </h2>
+            <Tabs value={activeCategory} onValueChange={(v: any) => setActiveCategory(v)} className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="movement">Move</TabsTrigger>
+                <TabsTrigger value="actions">Actions</TabsTrigger>
+                <TabsTrigger value="control">Control</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
+          <ScrollArea className="flex-1">
+            <div className="p-4 space-y-2">
+              {FTC_NODES[activeCategory].map((nodeConfig) => {
+                const Icon = nodeConfig.icon
+                return (
+                  <Button
+                    key={nodeConfig.id}
+                    onClick={() => addNodeToCanvas(nodeConfig)}
+                    variant="outline"
+                    className="w-full justify-start h-auto py-3 px-4 hover:border-blue-500 hover:bg-blue-500/10 transition-all"
+                  >
+                    <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${nodeConfig.color} flex items-center justify-center mr-3 flex-shrink-0`}>
+                      <Icon className="h-4 w-4 text-white" />
+                    </div>
+                    <span className="text-sm font-medium">{nodeConfig.label}</span>
+                  </Button>
+                )
+              })}
             </div>
-          </ResizablePanel>
+          </ScrollArea>
 
-          <ResizableHandle withHandle />
+          {/* Hardware Config */}
+          <div className="border-t border-zinc-800 p-4 bg-zinc-900/70">
+            <h3 className="text-xs font-bold text-white mb-2 flex items-center gap-2">
+              <Settings className="h-3 w-3" />
+              Hardware
+            </h3>
+            <div className="space-y-1 text-xs text-zinc-400">
+              <p>Motors: {motors.length}</p>
+              <p>Servos: {servos.length}</p>
+            </div>
+          </div>
+        </div>
 
-          {/* Center Panel - Flow Canvas */}
-          <ResizablePanel defaultSize={50} minSize={30}>
-            <div className="h-full bg-zinc-950 relative">
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
-                onNodeClick={onNodeClick}
-                nodeTypes={customNodeTypes}
-                fitView
-                className="bg-zinc-950"
-                defaultEdgeOptions={{
-                  animated: true,
-                  style: { stroke: '#3b82f6', strokeWidth: 2 }
-                }}
-              >
-                <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#333" />
-                <Controls className="bg-background/90 border border-border/50" />
-                <MiniMap className="bg-background/90 border border-border/50" nodeColor="#3b82f6" />
+        {/* Center - Flow Canvas */}
+        <div className="flex-1 relative bg-zinc-950">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeClick={onNodeClick}
+            fitView
+            defaultEdgeOptions={{
+              animated: true,
+              style: { stroke: '#3b82f6', strokeWidth: 2 }
+            }}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#333" />
+            <Controls className="!bg-zinc-900/90 !border-zinc-800" />
+          </ReactFlow>
+        </div>
 
-                {/* Node Palette */}
-                <Panel position="top-left" className="m-4">
-                  <Card className="w-64 bg-background/95 backdrop-blur-sm border-border/50">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center gap-2">
-                        <Layers className="h-4 w-4 text-blue-400" />
-                        <CardTitle className="text-sm">Add Nodes</CardTitle>
+        {/* Right Sidebar - Node Configuration */}
+        {selectedNode && selectedNode.data.nodeType !== 'start' && (
+          <div className="w-80 bg-zinc-900/50 border-l border-zinc-800 overflow-y-auto">
+            <div className="p-4">
+              <Card className="bg-zinc-900 border-zinc-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base text-white">Configure Block</CardTitle>
+                  <CardDescription className="text-zinc-400">{selectedNode.data.label}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Movement nodes */}
+                  {(selectedNode.data.nodeType?.startsWith('move') || selectedNode.data.nodeType?.includes('strafe')) && (
+                    <>
+                      <div>
+                        <Label className="text-xs text-zinc-300">Distance (inches)</Label>
+                        <Input
+                          type="number"
+                          placeholder="24"
+                          value={selectedNode.data.config?.distance || ''}
+                          onChange={(e) => updateNodeConfig('distance', e.target.value)}
+                          className="mt-1 bg-zinc-800 border-zinc-700"
+                        />
                       </div>
-                    </CardHeader>
-                    <CardContent className="grid grid-cols-2 gap-2">
-                      {Object.entries(nodeTypesConfig).filter(([key]) => key !== 'start').map(([key, config]) => {
-                        const Icon = config.icon
-                        return (
-                          <Button
-                            key={key}
-                            onClick={() => addNode(key as keyof typeof nodeTypesConfig)}
-                            variant="outline"
-                            size="sm"
-                            className="h-auto py-2 flex-col gap-1 hover:bg-blue-500/10 hover:border-blue-500/50"
-                          >
-                            <Icon className="h-4 w-4" />
-                            <span className="text-xs">{config.label}</span>
-                          </Button>
-                        )
-                      })}
-                    </CardContent>
-                  </Card>
-                </Panel>
+                      <div>
+                        <Label className="text-xs text-zinc-300">Power (0-1)</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="1"
+                          placeholder="0.5"
+                          value={selectedNode.data.config?.power || ''}
+                          onChange={(e) => updateNodeConfig('power', e.target.value)}
+                          className="mt-1 bg-zinc-800 border-zinc-700"
+                        />
+                      </div>
+                    </>
+                  )}
 
-                {/* Node Configuration Panel */}
-                {selectedNode && selectedNode.type !== 'start' && (
-                  <Panel position="top-right" className="m-4">
-                    <Card className="w-72 bg-background/95 backdrop-blur-sm border-border/50">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-sm">Configure: {selectedNode.data.label}</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        {selectedNode.data.type === 'move' && (
-                          <>
-                            <div>
-                              <Label className="text-xs">Distance (inches)</Label>
-                              <Input
-                                type="number"
-                                placeholder="24"
-                                value={selectedNode.data.config?.distance || ''}
-                                onChange={(e) => updateNodeConfig('distance', e.target.value)}
-                                className="h-8 mt-1"
-                              />
-                            </div>
-                            <div>
-                              <Label className="text-xs">Power (0-1)</Label>
-                              <Input
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                max="1"
-                                placeholder="0.5"
-                                value={selectedNode.data.config?.power || ''}
-                                onChange={(e) => updateNodeConfig('power', e.target.value)}
-                                className="h-8 mt-1"
-                              />
-                            </div>
-                          </>
-                        )}
+                  {/* Turn nodes */}
+                  {selectedNode.data.nodeType?.startsWith('turn') && (
+                    <div>
+                      <Label className="text-xs text-zinc-300">Angle (degrees)</Label>
+                      <Input
+                        type="number"
+                        placeholder="90"
+                        value={selectedNode.data.config?.angle || ''}
+                        onChange={(e) => updateNodeConfig('angle', e.target.value)}
+                        className="mt-1 bg-zinc-800 border-zinc-700"
+                      />
+                    </div>
+                  )}
 
-                        {selectedNode.data.type === 'turn' && (
-                          <>
-                            <div>
-                              <Label className="text-xs">Angle (degrees)</Label>
-                              <Input
-                                type="number"
-                                placeholder="90"
-                                value={selectedNode.data.config?.angle || ''}
-                                onChange={(e) => updateNodeConfig('angle', e.target.value)}
-                                className="h-8 mt-1"
-                              />
-                            </div>
-                            <div>
-                              <Label className="text-xs">Direction</Label>
-                              <Select
-                                value={selectedNode.data.config?.direction || 'left'}
-                                onValueChange={(value) => updateNodeConfig('direction', value)}
-                              >
-                                <SelectTrigger className="h-8 mt-1">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="left">Left</SelectItem>
-                                  <SelectItem value="right">Right</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </>
-                        )}
+                  {/* Wait node */}
+                  {selectedNode.data.nodeType === 'wait' && (
+                    <div>
+                      <Label className="text-xs text-zinc-300">Duration (seconds)</Label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        placeholder="1.0"
+                        value={selectedNode.data.config?.duration || ''}
+                        onChange={(e) => updateNodeConfig('duration', e.target.value)}
+                        className="mt-1 bg-zinc-800 border-zinc-700"
+                      />
+                    </div>
+                  )}
 
-                        {selectedNode.data.type === 'wait' && (
-                          <div>
-                            <Label className="text-xs">Duration (seconds)</Label>
-                            <Input
-                              type="number"
-                              step="0.1"
-                              placeholder="1.0"
-                              value={selectedNode.data.config?.duration || ''}
-                              onChange={(e) => updateNodeConfig('duration', e.target.value)}
-                              className="h-8 mt-1"
-                            />
-                          </div>
-                        )}
+                  {/* Custom code */}
+                  {selectedNode.data.nodeType === 'custom' && (
+                    <div>
+                      <Label className="text-xs text-zinc-300">Java Code</Label>
+                      <textarea
+                        value={selectedNode.data.config?.code || ''}
+                        onChange={(e) => updateNodeConfig('code', e.target.value)}
+                        placeholder="// Your Java code here"
+                        className="w-full h-40 mt-1 p-2 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded-md text-white"
+                      />
+                    </div>
+                  )}
 
-                        {selectedNode.data.type === 'action' && (
-                          <>
-                            <div>
-                              <Label className="text-xs">Servo/Motor</Label>
-                              <Select
-                                value={selectedNode.data.config?.device || ''}
-                                onValueChange={(value) => updateNodeConfig('device', value)}
-                              >
-                                <SelectTrigger className="h-8 mt-1">
-                                  <SelectValue placeholder="Select device" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {hardwareConfig.servos.map(servo => (
-                                    <SelectItem key={servo.id} value={servo.name}>{servo.name}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div>
-                              <Label className="text-xs">Position</Label>
-                              <Input
-                                type="number"
-                                step="0.1"
-                                placeholder="0.5"
-                                value={selectedNode.data.config?.position || ''}
-                                onChange={(e) => updateNodeConfig('position', e.target.value)}
-                                className="h-8 mt-1"
-                              />
-                            </div>
-                          </>
-                        )}
+                  <Button
+                    onClick={deleteSelectedNode}
+                    variant="destructive"
+                    size="sm"
+                    className="w-full mt-4"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Block
+                  </Button>
+                </CardContent>
+              </Card>
 
-                        {selectedNode.data.type === 'custom' && (
-                          <div>
-                            <Label className="text-xs">Java Code</Label>
-                            <textarea
-                              value={selectedNode.data.config?.code || ''}
-                              onChange={(e) => updateNodeConfig('code', e.target.value)}
-                              placeholder="// Your code here"
-                              className="w-full h-32 mt-1 p-2 text-xs font-mono bg-background border border-border rounded-md"
-                            />
-                          </div>
-                        )}
-
-                        <Button
-                          onClick={deleteSelectedNode}
-                          variant="destructive"
-                          size="sm"
-                          className="w-full mt-4"
-                        >
-                          Delete Node
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  </Panel>
-                )}
-              </ReactFlow>
+              {/* Instructions */}
+              <Card className="mt-4 bg-zinc-900 border-zinc-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm text-white">Tips</CardTitle>
+                </CardHeader>
+                <CardContent className="text-xs text-zinc-400 space-y-2">
+                  <p>• Connect blocks by dragging from one to another</p>
+                  <p>• Click a block to configure it</p>
+                  <p>• Blocks execute from top to bottom</p>
+                  <p>• Export code when done</p>
+                </CardContent>
+              </Card>
             </div>
-          </ResizablePanel>
-
-          <ResizableHandle withHandle />
-
-          {/* Right Panel - Field Preview */}
-          <ResizablePanel defaultSize={30} minSize={20} maxSize={40}>
-            <div className="h-full p-3 bg-background/50 overflow-y-auto">
-              <FieldPreview robotPosition={robotPosition} />
-            </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
+          </div>
+        )}
       </div>
     </div>
   )
