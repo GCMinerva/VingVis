@@ -202,25 +202,26 @@ export default function CurvesEditor() {
   ])
 
   useEffect(() => {
-    const guestMode = localStorage.getItem('guestMode') === 'true'
-    setIsGuest(guestMode)
-    if (!authLoading && !user && !guestMode) {
-      router.push("/login")
+    if (typeof window !== 'undefined') {
+      const guestMode = localStorage.getItem('guestMode') === 'true'
+      setIsGuest(guestMode)
+      if (!authLoading && !user && !guestMode) {
+        router.push("/login")
+      }
     }
   }, [user, authLoading, router])
 
   useEffect(() => {
     if (params.projecthash) {
-      if (user) loadProject()
-      else if (isGuest) loadGuestProject()
+      if (user) {
+        loadProject()
+      } else if (isGuest) {
+        loadGuestProject()
+      }
     }
-  }, [user, isGuest, params.projecthash])
+  }, [user, isGuest, params.projecthash]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    drawField()
-  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress])
-
-  const drawField = () => {
+  const drawField = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
@@ -369,7 +370,11 @@ export default function CurvesEditor() {
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }
+  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves])
+
+  useEffect(() => {
+    drawField()
+  }, [drawField])
 
   const drawRobot = (ctx: CanvasRenderingContext2D, x: number, y: number, heading: number, scale: number) => {
     const canvasX = (x / 144) * ctx.canvas.width
