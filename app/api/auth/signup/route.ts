@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function POST(request: NextRequest) {
   try {
     const { email, password, username, ftcTeamName, ftcTeamId } = await request.json()
 
     // Sign up the user
-    const { data: authData, error: authError } = await supabase.auth.signUp({
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
+      email_confirm: true,
     })
 
     if (authError) {
@@ -19,8 +20,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create user' }, { status: 400 })
     }
 
-    // Create user profile
-    const { error: profileError } = await supabase.from('users').insert({
+    // Create user profile using admin client (bypasses RLS)
+    const { error: profileError } = await supabaseAdmin.from('users').insert({
       id: authData.user.id,
       email,
       username,

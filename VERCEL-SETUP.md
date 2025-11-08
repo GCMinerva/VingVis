@@ -23,6 +23,12 @@ Add the following variables:
 - **Value**: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNzdm1mbHRuanpkdGZnZGNtaGpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI1OTg4MjQsImV4cCI6MjA3ODE3NDgyNH0.aTmRZUSYp7GPsts_sL3V65dDtPh7Fq66FM5NxfdIwXk`
 - **Environment**: Production, Preview, Development (select all)
 
+**Variable 3: (REQUIRED for signup to work)**
+- **Name**: `SUPABASE_SERVICE_ROLE_KEY`
+- **Value**: Get this from your Supabase dashboard → Settings → API → service_role key (secret)
+- **Environment**: Production, Preview, Development (select all)
+- **⚠️ IMPORTANT**: This is a secret key. Keep it secure and never commit it to your repository!
+
 ### Step 3: Redeploy
 
 After adding the environment variables:
@@ -55,7 +61,18 @@ Once deployed and environment variables are set:
 
 ## Important Notes
 
-- The environment variables are safe to commit to Vercel as they are public keys
+- The `NEXT_PUBLIC_*` environment variables are safe to expose (they are public keys)
+- The `SUPABASE_SERVICE_ROLE_KEY` is a **secret** - never expose it client-side
+- The service role key is required for user signup (bypasses RLS policies)
 - The anon key has Row Level Security (RLS) policies that protect your data
 - Make sure you've enabled Authentication in your Supabase project
 - Enable Email auth provider in Supabase Authentication settings
+
+## Getting Your Service Role Key
+
+1. Go to https://supabase.com/dashboard
+2. Select your project
+3. Go to **Settings** → **API**
+4. Find the **service_role** key under "Project API keys"
+5. Copy this key and add it as `SUPABASE_SERVICE_ROLE_KEY` in Vercel
+6. **Keep this key secret!** It has admin privileges
