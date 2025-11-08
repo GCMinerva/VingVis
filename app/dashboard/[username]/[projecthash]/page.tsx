@@ -20,7 +20,6 @@ import {
   Pause,
   SkipBack,
   Download,
-  Upload,
   ArrowUp,
   ArrowDown,
   ArrowLeft,
@@ -34,7 +33,7 @@ import {
   Ruler,
   Move,
   Target,
-  BezierCurve,
+  Spline,
 } from "lucide-react"
 
 type Project = {
@@ -76,7 +75,7 @@ type Servo = {
 const BLOCK_TYPES = {
   movement: [
     { id: 'moveToPosition', label: 'Move to Position', icon: Target },
-    { id: 'splineTo', label: 'Spline to Position', icon: BezierCurve },
+    { id: 'splineTo', label: 'Spline to Position', icon: Spline },
     { id: 'forward', label: 'Move Forward', icon: ArrowUp },
     { id: 'backward', label: 'Move Backward', icon: ArrowDown },
     { id: 'strafeLeft', label: 'Strafe Left', icon: ArrowLeft },
