@@ -6,35 +6,33 @@ import { useAuth } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Slider } from "@/components/ui/slider"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import {
   Save,
   Play,
   Pause,
   SkipBack,
   Download,
-  Upload,
   ArrowUp,
   ArrowDown,
   ArrowLeft,
   ArrowRight,
   RotateCw,
   Timer,
+  Eye,
+  EyeOff,
   Code,
+  Plus,
   Trash2,
   Settings,
   ChevronRight,
   Ruler,
   Move,
-  Target,
-  BezierCurve,
 } from "lucide-react"
 
 type Project = {
@@ -53,10 +51,6 @@ type ActionBlock = {
   power?: number
   angle?: number
   duration?: number
-  targetX?: number
-  targetY?: number
-  targetHeading?: number
-  curveType?: 'linear' | 'spline' | 'bezier'
   servo?: string
   position?: number
   customCode?: string
@@ -75,15 +69,12 @@ type Servo = {
 
 const BLOCK_TYPES = {
   movement: [
-    { id: 'moveToPosition', label: 'Move to Position', icon: Target },
-    { id: 'splineTo', label: 'Spline to Position', icon: BezierCurve },
     { id: 'forward', label: 'Move Forward', icon: ArrowUp },
     { id: 'backward', label: 'Move Backward', icon: ArrowDown },
     { id: 'strafeLeft', label: 'Strafe Left', icon: ArrowLeft },
     { id: 'strafeRight', label: 'Strafe Right', icon: ArrowRight },
     { id: 'turnLeft', label: 'Turn Left', icon: RotateCw },
     { id: 'turnRight', label: 'Turn Right', icon: RotateCw },
-    { id: 'turnToHeading', label: 'Turn to Heading', icon: RotateCw },
   ],
   mechanisms: [
     { id: 'servo1', label: 'Servo 1', icon: Settings },
@@ -98,69 +89,7 @@ const BLOCK_TYPES = {
   ]
 }
 
-// Cubic bezier curve calculation
-function cubicBezier(t: number, p0: number, p1: number, p2: number, p3: number): number {
-  const u = 1 - t
-  return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3
-}
-
-// Generate smooth curve through points
-function generateSpline(points: {x: number, y: number, heading: number}[], steps: number = 50): {x: number, y: number, heading: number}[] {
-  if (points.length < 2) return points
-  if (points.length === 2) {
-    // Linear interpolation
-    const result: {x: number, y: number, heading: number}[] = []
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps
-      result.push({
-        x: points[0].x + (points[1].x - points[0].x) * t,
-        y: points[0].y + (points[1].y - points[0].y) * t,
-        heading: points[0].heading + (points[1].heading - points[0].heading) * t,
-      })
-    }
-    return result
-  }
-
-  // Catmull-Rom spline for smooth curves
-  const result: {x: number, y: number, heading: number}[] = []
-
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = i > 0 ? points[i - 1] : points[i]
-    const p1 = points[i]
-    const p2 = points[i + 1]
-    const p3 = i < points.length - 2 ? points[i + 2] : points[i + 1]
-
-    const segmentSteps = Math.ceil(steps / (points.length - 1))
-
-    for (let j = 0; j <= segmentSteps; j++) {
-      const t = j / segmentSteps
-      const t2 = t * t
-      const t3 = t2 * t
-
-      const x = 0.5 * (
-        (2 * p1.x) +
-        (-p0.x + p2.x) * t +
-        (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
-        (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3
-      )
-
-      const y = 0.5 * (
-        (2 * p1.y) +
-        (-p0.y + p2.y) * t +
-        (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
-        (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3
-      )
-
-      const heading = p1.heading + (p2.heading - p1.heading) * t
-
-      result.push({ x, y, heading })
-    }
-  }
-
-  return result
-}
-
-export default function CurvesEditor() {
+export default function EnhancedEditor() {
   const params = useParams()
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
@@ -171,24 +100,26 @@ export default function CurvesEditor() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [isGuest, setIsGuest] = useState(false)
+  const [showPreview, setShowPreview] = useState(true)
   const [showRuler, setShowRuler] = useState(false)
   const [activeTab, setActiveTab] = useState<'movement' | 'mechanisms' | 'control'>('movement')
-  const [pathMode, setPathMode] = useState<'roadrunner' | 'pedropathing' | 'simple'>('simple')
-  const [useCurves, setUseCurves] = useState(true)
 
   const [actions, setActions] = useState<ActionBlock[]>([])
   const [selectedAction, setSelectedAction] = useState<ActionBlock | null>(null)
 
+  // Animation state
   const [isAnimating, setIsAnimating] = useState(false)
   const [animationProgress, setAnimationProgress] = useState(0)
   const [animationSpeed, setAnimationSpeed] = useState(1)
 
+  // Robot state
   const [robotX, setRobotX] = useState(72)
   const [robotY, setRobotY] = useState(72)
   const [robotHeading, setRobotHeading] = useState(0)
   const [isDraggingRobot, setIsDraggingRobot] = useState(false)
   const [path, setPath] = useState<{x: number, y: number, heading: number}[]>([])
 
+  // Hardware config
   const [motors, setMotors] = useState<Motor[]>([
     { name: 'motorFL', port: 0, reversed: false },
     { name: 'motorFR', port: 1, reversed: false },
@@ -216,6 +147,7 @@ export default function CurvesEditor() {
     }
   }, [user, isGuest, params.projecthash])
 
+  // Draw field
   useEffect(() => {
     drawField()
   }, [robotX, robotY, robotHeading, path, showRuler, animationProgress])
@@ -248,7 +180,7 @@ export default function CurvesEditor() {
       ctx.stroke()
     }
 
-    // Tile numbers
+    // Tile numbers (24" markers)
     ctx.fillStyle = '#444'
     ctx.font = '10px monospace'
     for (let i = 1; i < 6; i++) {
@@ -271,7 +203,7 @@ export default function CurvesEditor() {
     ctx.fillRect(0, canvas.height - zoneSize, zoneSize, zoneSize)
     ctx.fillRect(canvas.width - zoneSize, canvas.height - zoneSize, zoneSize, zoneSize)
 
-    // Center lines
+    // Center line
     ctx.strokeStyle = '#333'
     ctx.lineWidth = 2
     ctx.setLineDash([10, 10])
@@ -285,10 +217,9 @@ export default function CurvesEditor() {
     ctx.stroke()
     ctx.setLineDash([])
 
-    // Draw path
+    // Draw full path
     if (path.length > 1) {
-      // Full path (static)
-      ctx.strokeStyle = useCurves ? '#3b82f6' : '#666'
+      ctx.strokeStyle = '#3b82f6'
       ctx.lineWidth = 2
       ctx.globalAlpha = 0.5
       ctx.beginPath()
@@ -301,23 +232,17 @@ export default function CurvesEditor() {
       ctx.stroke()
       ctx.globalAlpha = 1
 
-      // Waypoints
-      const waypoints = getWaypoints()
-      waypoints.forEach((point, i) => {
+      // Path points
+      path.forEach((point, i) => {
         const x = (point.x / 144) * canvas.width
         const y = (point.y / 144) * canvas.height
-        ctx.fillStyle = i === 0 ? '#10b981' : '#3b82f6'
+        ctx.fillStyle = i === 0 ? '#10b981' : '#60a5fa'
         ctx.beginPath()
-        ctx.arc(x, y, 4, 0, Math.PI * 2)
+        ctx.arc(x, y, 3, 0, Math.PI * 2)
         ctx.fill()
-
-        // Label waypoints
-        ctx.fillStyle = '#fff'
-        ctx.font = '10px bold monospace'
-        ctx.fillText(`${i}`, x + 8, y - 8)
       })
 
-      // Animated portion
+      // Animated path (if animating)
       if (isAnimating && animationProgress > 0) {
         const numPoints = path.length
         const currentIndex = Math.floor(animationProgress * (numPoints - 1))
@@ -327,11 +252,13 @@ export default function CurvesEditor() {
         if (currentIndex < path.length && nextIndex < path.length) {
           const current = path[currentIndex]
           const next = path[nextIndex]
+
+          // Interpolate position
           const interpX = current.x + (next.x - current.x) * t
           const interpY = current.y + (next.y - current.y) * t
           const interpHeading = current.heading + (next.heading - current.heading) * t
 
-          // Animated path
+          // Draw animated path
           ctx.strokeStyle = '#10b981'
           ctx.lineWidth = 3
           ctx.beginPath()
@@ -346,15 +273,17 @@ export default function CurvesEditor() {
           ctx.lineTo(finalX, finalY)
           ctx.stroke()
 
+          // Update robot position during animation
           drawRobot(ctx, interpX, interpY, interpHeading, scale)
           return
         }
       }
     }
 
+    // Draw robot at current position
     drawRobot(ctx, robotX, robotY, robotHeading, scale)
 
-    // Ruler
+    // Ruler tool
     if (showRuler) {
       ctx.strokeStyle = '#fbbf24'
       ctx.lineWidth = 2
@@ -400,84 +329,13 @@ export default function CurvesEditor() {
     ctx.closePath()
     ctx.fill()
 
+    // Center dot
+    ctx.fillStyle = '#fff'
+    ctx.beginPath()
+    ctx.arc(0, 0, 3, 0, Math.PI * 2)
+    ctx.fill()
+
     ctx.restore()
-  }
-
-  const getWaypoints = (): {x: number, y: number, heading: number}[] => {
-    const waypoints: {x: number, y: number, heading: number}[] = [{x: robotX, y: robotY, heading: robotHeading}]
-
-    let currentX = robotX
-    let currentY = robotY
-    let currentHeading = robotHeading
-
-    actions.forEach(action => {
-      if (action.type === 'moveToPosition' || action.type === 'splineTo') {
-        currentX = action.targetX || currentX
-        currentY = action.targetY || currentY
-        currentHeading = action.targetHeading !== undefined ? action.targetHeading : currentHeading
-        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
-      } else if (action.type === 'forward') {
-        const distance = action.distance || 24
-        currentX += distance * Math.cos((currentHeading * Math.PI) / 180)
-        currentY += distance * Math.sin((currentHeading * Math.PI) / 180)
-        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
-      } else if (action.type === 'backward') {
-        const distance = action.distance || 24
-        currentX -= distance * Math.cos((currentHeading * Math.PI) / 180)
-        currentY -= distance * Math.sin((currentHeading * Math.PI) / 180)
-        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
-      } else if (action.type === 'strafeLeft') {
-        const distance = action.distance || 24
-        currentX += distance * Math.cos(((currentHeading - 90) * Math.PI) / 180)
-        currentY += distance * Math.sin(((currentHeading - 90) * Math.PI) / 180)
-        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
-      } else if (action.type === 'strafeRight') {
-        const distance = action.distance || 24
-        currentX += distance * Math.cos(((currentHeading + 90) * Math.PI) / 180)
-        currentY += distance * Math.sin(((currentHeading + 90) * Math.PI) / 180)
-        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
-      } else if (action.type === 'turnLeft') {
-        currentHeading -= action.angle || 90
-        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
-      } else if (action.type === 'turnRight') {
-        currentHeading += action.angle || 90
-        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
-      } else if (action.type === 'turnToHeading') {
-        currentHeading = action.targetHeading || currentHeading
-        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
-      }
-    })
-
-    return waypoints
-  }
-
-  const calculatePath = () => {
-    const waypoints = getWaypoints()
-
-    if (useCurves && waypoints.length > 2) {
-      // Use spline interpolation for smooth curves
-      const smoothPath = generateSpline(waypoints, 100)
-      setPath(smoothPath)
-      return smoothPath
-    } else {
-      // Linear interpolation
-      const linearPath: {x: number, y: number, heading: number}[] = []
-      for (let i = 0; i < waypoints.length - 1; i++) {
-        const start = waypoints[i]
-        const end = waypoints[i + 1]
-        const steps = 20
-        for (let j = 0; j <= steps; j++) {
-          const t = j / steps
-          linearPath.push({
-            x: start.x + (end.x - start.x) * t,
-            y: start.y + (end.y - start.y) * t,
-            heading: start.heading + (end.heading - start.heading) * t,
-          })
-        }
-      }
-      setPath(linearPath)
-      return linearPath
-    }
   }
 
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -488,6 +346,7 @@ export default function CurvesEditor() {
     const x = ((e.clientX - rect.left) / rect.width) * 144
     const y = ((e.clientY - rect.top) / rect.height) * 144
 
+    // Check if clicking near robot
     const distance = Math.sqrt(Math.pow(x - robotX, 2) + Math.pow(y - robotY, 2))
     if (distance < 15) {
       setIsDraggingRobot(true)
@@ -601,10 +460,6 @@ export default function CurvesEditor() {
       angle: 90,
       duration: 1,
       position: 0.5,
-      targetX: robotX,
-      targetY: robotY,
-      targetHeading: robotHeading,
-      curveType: 'linear',
     }
     setActions([...actions, newAction])
   }
@@ -621,13 +476,87 @@ export default function CurvesEditor() {
     }
   }
 
+  const calculatePath = () => {
+    let x = robotX, y = robotY, heading = robotHeading
+    const newPath: {x: number, y: number, heading: number}[] = [{x, y, heading}]
+
+    actions.forEach(action => {
+      const steps = 10 // Interpolation steps for smooth animation
+      const distance = action.distance || 24
+      const angle = action.angle || 90
+
+      if (action.type === 'forward') {
+        for (let i = 1; i <= steps; i++) {
+          const d = (distance / steps) * i
+          const newX = robotX + d * Math.cos((heading * Math.PI) / 180)
+          const newY = robotY + d * Math.sin((heading * Math.PI) / 180)
+          newPath.push({x: newX, y: newY, heading})
+        }
+        x = robotX + distance * Math.cos((heading * Math.PI) / 180)
+        y = robotY + distance * Math.sin((heading * Math.PI) / 180)
+        robotX = x
+        robotY = y
+      } else if (action.type === 'backward') {
+        for (let i = 1; i <= steps; i++) {
+          const d = (distance / steps) * i
+          const newX = robotX - d * Math.cos((heading * Math.PI) / 180)
+          const newY = robotY - d * Math.sin((heading * Math.PI) / 180)
+          newPath.push({x: newX, y: newY, heading})
+        }
+        x = robotX - distance * Math.cos((heading * Math.PI) / 180)
+        y = robotY - distance * Math.sin((heading * Math.PI) / 180)
+        robotX = x
+        robotY = y
+      } else if (action.type === 'strafeLeft') {
+        for (let i = 1; i <= steps; i++) {
+          const d = (distance / steps) * i
+          const newX = robotX + d * Math.cos(((heading - 90) * Math.PI) / 180)
+          const newY = robotY + d * Math.sin(((heading - 90) * Math.PI) / 180)
+          newPath.push({x: newX, y: newY, heading})
+        }
+        x = robotX + distance * Math.cos(((heading - 90) * Math.PI) / 180)
+        y = robotY + distance * Math.sin(((heading - 90) * Math.PI) / 180)
+        robotX = x
+        robotY = y
+      } else if (action.type === 'strafeRight') {
+        for (let i = 1; i <= steps; i++) {
+          const d = (distance / steps) * i
+          const newX = robotX + d * Math.cos(((heading + 90) * Math.PI) / 180)
+          const newY = robotY + d * Math.sin(((heading + 90) * Math.PI) / 180)
+          newPath.push({x: newX, y: newY, heading})
+        }
+        x = robotX + distance * Math.cos(((heading + 90) * Math.PI) / 180)
+        y = robotY + distance * Math.sin(((heading + 90) * Math.PI) / 180)
+        robotX = x
+        robotY = y
+      } else if (action.type === 'turnLeft') {
+        for (let i = 1; i <= steps; i++) {
+          const newHeading = heading - (angle / steps) * i
+          newPath.push({x, y, heading: newHeading})
+        }
+        heading -= angle
+      } else if (action.type === 'turnRight') {
+        for (let i = 1; i <= steps; i++) {
+          const newHeading = heading + (angle / steps) * i
+          newPath.push({x, y, heading: newHeading})
+        }
+        heading += angle
+      } else {
+        newPath.push({x, y, heading})
+      }
+    })
+
+    setPath(newPath)
+    return newPath
+  }
+
   const startAnimation = () => {
     const newPath = calculatePath()
     setPath(newPath)
     setAnimationProgress(0)
     setIsAnimating(true)
 
-    const duration = 3000 / animationSpeed
+    const duration = 3000 / animationSpeed // 3 seconds base duration
     const startTime = Date.now()
 
     const animate = () => {
@@ -667,52 +596,78 @@ export default function CurvesEditor() {
     stopAnimation()
   }
 
-  const exportRoadRunner = () => {
+  const exportCode = () => {
     let code = `package org.firstinspires.ftc.teamcode;
 
-import com.acmerobotics.roadrunner.geometry.Pose2d;
-import com.acmerobotics.roadrunner.trajectory.Trajectory;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.Servo;
 
-@Autonomous(name = "${project?.name || 'Auto'} (RoadRunner)", group = "Auto")
-public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}RR extends LinearOpMode {
+@Autonomous(name = "${project?.name || 'Auto'}", group = "Auto")
+public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')} extends LinearOpMode {
+    // Drive Motors
+`
+    motors.forEach(motor => {
+      code += `    private DcMotor ${motor.name};\n`
+    })
 
+    code += `\n    // Mechanism Servos\n`
+    servos.forEach(servo => {
+      code += `    private Servo ${servo.name};\n`
+    })
+
+    code += `
     @Override
     public void runOpMode() {
-        SampleMecanumDrive drive = new SampleMecanumDrive(hardwareMap);
+        // Initialize drive motors
+`
+    motors.forEach(motor => {
+      code += `        ${motor.name} = hardwareMap.get(DcMotor.class, "${motor.name}");\n`
+      if (motor.reversed) {
+        code += `        ${motor.name}.setDirection(DcMotor.Direction.REVERSE);\n`
+      }
+    })
 
-        Pose2d startPose = new Pose2d(${robotX}, ${robotY}, Math.toRadians(${robotHeading}));
-        drive.setPoseEstimate(startPose);
+    code += `\n        // Initialize servos\n`
+    servos.forEach(servo => {
+      code += `        ${servo.name} = hardwareMap.get(Servo.class, "${servo.name}");\n`
+    })
 
+    code += `
+        telemetry.addData("Status", "Ready");
+        telemetry.update();
         waitForStart();
 
         if (opModeIsActive()) {
-            // Build trajectory
-            TrajectorySequenceBuilder builder = drive.trajectorySequenceBuilder(startPose);
 `
 
     actions.forEach(action => {
-      if (action.type === 'moveToPosition') {
-        code += `
-            .lineTo(new Vector2d(${action.targetX}, ${action.targetY}))`
-        if (action.targetHeading !== undefined) {
-          code += `
-            .turn(Math.toRadians(${action.targetHeading}))`
-        }
-      } else if (action.type === 'splineTo') {
-        code += `
-            .splineTo(new Vector2d(${action.targetX}, ${action.targetY}), Math.toRadians(${action.targetHeading || 0}))`
+      if (action.type.includes('forward') || action.type.includes('backward') || action.type.includes('strafe')) {
+        code += `            // ${action.label} ${action.distance || 24} inches\n`
+        motors.forEach(m => {
+          code += `            ${m.name}.setPower(${action.power || 0.5});\n`
+        })
+        code += `            sleep(${Math.round(((action.distance || 24) / 12) * 1000)});\n`
+        motors.forEach(m => {
+          code += `            ${m.name}.setPower(0);\n`
+        })
+        code += `\n`
+      } else if (action.type.includes('turn')) {
+        code += `            // ${action.label} ${action.angle || 90} degrees\n`
+        code += `            sleep(${Math.round(((action.angle || 90) / 90) * 500)});\n\n`
+      } else if (action.type.startsWith('servo')) {
+        code += `            ${action.type}.setPosition(${action.position || 0.5});\n`
+        code += `            sleep(500);\n\n`
       } else if (action.type === 'wait') {
-        code += `
-            .waitSeconds(${action.duration || 1})`
+        code += `            sleep(${Math.round((action.duration || 1) * 1000)});\n\n`
+      } else if (action.type === 'custom') {
+        code += `            ${action.customCode || '// Your code here'}\n\n`
       }
     })
 
-    code += `;
-
-            TrajectorySequence trajSeq = builder.build();
-            drive.followTrajectorySequence(trajSeq);
+    code += `            telemetry.addData("Status", "Complete");
+            telemetry.update();
         }
     }
 }
@@ -722,80 +677,11 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}RR extends
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}RR.java`
+    a.download = `${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}.java`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-  }
-
-  const exportPedroPathing = () => {
-    let code = `package org.firstinspires.ftc.teamcode;
-
-import com.pedropathing.follower.Follower;
-import com.pedropathing.pathgen.BezierLine;
-import com.pedropathing.pathgen.PathChain;
-import com.pedropathing.pathgen.Point;
-import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
-import com.qualcomm.robotcore.eventloop.opmode.OpMode;
-
-@Autonomous(name = "${project?.name || 'Auto'} (PedroPathing)", group = "Auto")
-public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro extends OpMode {
-    private Follower follower;
-    private PathChain path;
-
-    @Override
-    public void init() {
-        follower = new Follower(hardwareMap);
-
-        // Build path
-        path = follower.pathBuilder()
-            .addPath(new BezierLine(new Point(${robotX}, ${robotY}, Point.CARTESIAN)))
-`
-
-    actions.forEach(action => {
-      if (action.type === 'moveToPosition' || action.type === 'splineTo') {
-        code += `            .addPath(new BezierLine(new Point(${action.targetX}, ${action.targetY}, Point.CARTESIAN)))\n`
-      }
-    })
-
-    code += `            .build();
-
-        follower.followPath(path);
-    }
-
-    @Override
-    public void loop() {
-        follower.update();
-
-        telemetry.addData("X", follower.getPose().getX());
-        telemetry.addData("Y", follower.getPose().getY());
-        telemetry.addData("Heading", Math.toDegrees(follower.getPose().getHeading()));
-        telemetry.update();
-    }
-}
-`
-
-    const blob = new Blob([code], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro.java`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-  }
-
-  const exportCode = () => {
-    if (pathMode === 'roadrunner') {
-      exportRoadRunner()
-    } else if (pathMode === 'pedropathing') {
-      exportPedroPathing()
-    } else {
-      // Export simple Java code as before
-      exportRoadRunner() // Default to RoadRunner for now
-    }
   }
 
   if (authLoading || loading || !project) {
@@ -839,21 +725,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
             </Button>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-zinc-400">Curves</Label>
-            <Switch checked={useCurves} onCheckedChange={setUseCurves} />
-          </div>
-          <Select value={pathMode} onValueChange={(v: any) => setPathMode(v)}>
-            <SelectTrigger className="w-40 h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="simple">Simple</SelectItem>
-              <SelectItem value="roadrunner">RoadRunner</SelectItem>
-              <SelectItem value="pedropathing">PedroPathing</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 text-xs text-zinc-400">
             <span>Speed:</span>
             <Slider
@@ -879,7 +751,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: Blocks + Hardware */}
+        {/* Left: Block Palette + Hardware Config */}
         <div className="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col">
           <Tabs defaultValue="blocks" className="flex-1 flex flex-col">
             <TabsList className="grid w-full grid-cols-2 m-2">
@@ -1004,8 +876,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
             <div className="space-y-2">
               {actions.length === 0 && (
                 <div className="text-center py-12 text-zinc-500">
-                  <p className="text-sm">No actions yet. Add "Move to Position" or other blocks.</p>
-                  <p className="text-xs mt-2">Try adding waypoints to create smooth paths!</p>
+                  <p className="text-sm">No actions yet. Add blocks from the left panel.</p>
                 </div>
               )}
               {actions.map((action, index) => (
@@ -1023,16 +894,14 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                       <div>
                         <div className="font-medium text-sm text-white">{action.label}</div>
                         <div className="text-xs text-zinc-500">
-                          {action.type === 'moveToPosition' || action.type === 'splineTo'
-                            ? `to (${action.targetX?.toFixed(1)}, ${action.targetY?.toFixed(1)}) @ ${action.targetHeading?.toFixed(0)}°`
-                            : action.type === 'turnToHeading'
-                            ? `${action.targetHeading}°`
-                            : action.type.includes('move') || action.type.includes('strafe')
+                          {action.type.includes('move') || action.type.includes('strafe')
                             ? `${action.distance || 24}" @ ${(action.power || 0.5) * 100}%`
                             : action.type.includes('turn')
                             ? `${action.angle || 90}°`
                             : action.type === 'wait'
                             ? `${action.duration || 1}s`
+                            : action.type.startsWith('servo')
+                            ? `Pos: ${((action.position || 0.5) * 100).toFixed(0)}%`
                             : 'Custom'}
                         </div>
                       </div>
@@ -1055,41 +924,10 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
         {/* Right: Config + Preview */}
         <div className="w-96 border-l border-zinc-800 flex flex-col bg-zinc-900">
           {selectedAction && (
-            <div className="border-b border-zinc-800 p-4 max-h-64 overflow-auto">
+            <div className="border-b border-zinc-800 p-4">
               <h3 className="text-sm font-bold text-white mb-3">Configure: {selectedAction.label}</h3>
               <div className="space-y-3">
-                {(selectedAction.type === 'moveToPosition' || selectedAction.type === 'splineTo') && (
-                  <>
-                    <div>
-                      <Label className="text-xs text-zinc-400">Target X (inches)</Label>
-                      <Input
-                        type="number"
-                        value={selectedAction.targetX || 0}
-                        onChange={(e) => updateAction(selectedAction.id, { targetX: parseFloat(e.target.value) })}
-                        className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-zinc-400">Target Y (inches)</Label>
-                      <Input
-                        type="number"
-                        value={selectedAction.targetY || 0}
-                        onChange={(e) => updateAction(selectedAction.id, { targetY: parseFloat(e.target.value) })}
-                        className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-zinc-400">Target Heading (degrees)</Label>
-                      <Input
-                        type="number"
-                        value={selectedAction.targetHeading || 0}
-                        onChange={(e) => updateAction(selectedAction.id, { targetHeading: parseFloat(e.target.value) })}
-                        className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
-                      />
-                    </div>
-                  </>
-                )}
-                {(selectedAction.type.includes('move') && !selectedAction.type.includes('To')) && (
+                {(selectedAction.type.includes('move') || selectedAction.type.includes('strafe')) && (
                   <>
                     <div>
                       <Label className="text-xs text-zinc-400">Distance (inches)</Label>
@@ -1113,24 +951,13 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                     </div>
                   </>
                 )}
-                {(selectedAction.type.includes('turn') && selectedAction.type !== 'turnToHeading') && (
+                {selectedAction.type.includes('turn') && (
                   <div>
                     <Label className="text-xs text-zinc-400">Angle (degrees)</Label>
                     <Input
                       type="number"
                       value={selectedAction.angle || 90}
                       onChange={(e) => updateAction(selectedAction.id, { angle: parseFloat(e.target.value) })}
-                      className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
-                    />
-                  </div>
-                )}
-                {selectedAction.type === 'turnToHeading' && (
-                  <div>
-                    <Label className="text-xs text-zinc-400">Target Heading (degrees)</Label>
-                    <Input
-                      type="number"
-                      value={selectedAction.targetHeading || 0}
-                      onChange={(e) => updateAction(selectedAction.id, { targetHeading: parseFloat(e.target.value) })}
                       className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
                     />
                   </div>
@@ -1179,8 +1006,11 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
           <div className="flex-1 p-4 overflow-auto">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-white">Field Preview</h3>
-              <div className="text-xs text-zinc-500">
-                {useCurves ? 'Smooth Curves' : 'Linear'}
+              <div className="flex items-center gap-1">
+                <Button size="sm" variant="ghost" className="h-7 text-xs">
+                  <Move className="h-3 w-3 mr-1" />
+                  Drag Robot
+                </Button>
               </div>
             </div>
             <div className="aspect-square bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden cursor-move">
@@ -1208,9 +1038,6 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                 <div className="text-zinc-500">θ</div>
                 <div className="font-mono text-white">{robotHeading.toFixed(1)}°</div>
               </div>
-            </div>
-            <div className="mt-2 text-xs text-zinc-500 text-center">
-              Waypoints: {getWaypoints().length}
             </div>
           </div>
         </div>
