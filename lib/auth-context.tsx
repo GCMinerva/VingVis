@@ -20,11 +20,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      setLoading(false)
-    })
+    // Check active session via API
+    fetch('/api/auth/session')
+      .then(res => res.json())
+      .then(data => {
+        setUser(data.user ?? null)
+        setLoading(false)
+      })
+      .catch(() => {
+        setLoading(false)
+      })
 
     // Listen for auth changes
     const {
@@ -37,11 +42,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    const response = await fetch('/api/auth/signin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
     })
-    if (error) throw error
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to sign in')
+    }
+
+    setUser(data.user)
   }
 
   const signUp = async (
@@ -51,37 +64,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ftcTeamName?: string,
     ftcTeamId?: string
   ) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
+    const response = await fetch('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, username, ftcTeamName, ftcTeamId }),
     })
 
-    if (error) throw error
+    const data = await response.json()
 
-    // Create user profile
-    if (data.user) {
-      const { error: profileError } = await supabase.from('users').insert({
-        id: data.user.id,
-        email,
-        username,
-        ftc_team_name: ftcTeamName,
-        ftc_team_id: ftcTeamId,
-      })
-
-      if (profileError) throw profileError
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to sign up')
     }
+
+    setUser(data.user)
   }
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
+    const response = await fetch('/api/auth/signout', {
+      method: 'POST',
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to sign out')
+    }
+
+    setUser(null)
   }
 
   const resetPassword = async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+    const response = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
     })
-    if (error) throw error
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to reset password')
+    }
   }
 
   return (
