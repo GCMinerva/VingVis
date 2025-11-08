@@ -4,13 +4,14 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
+import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { AlertCircle, Plus, Settings, Trash2, ExternalLink, LogOut } from "lucide-react"
+import { AlertCircle, Plus, Settings, Trash2, ExternalLink, LogOut, Crown } from "lucide-react"
 import Link from "next/link"
 
 type Project = {
@@ -30,6 +31,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [username, setUsername] = useState<string>("")
+  const [isGuest, setIsGuest] = useState(false)
   const [createFormData, setCreateFormData] = useState({
     name: "",
     templateType: "omni-wheel" as 'omni-wheel' | 'mecanum-wheel',
@@ -40,7 +42,11 @@ export default function DashboardPage() {
   })
 
   useEffect(() => {
-    if (!authLoading && !user) {
+    // Check for guest mode
+    const guestMode = localStorage.getItem('guestMode') === 'true'
+    setIsGuest(guestMode)
+
+    if (!authLoading && !user && !guestMode) {
       router.push("/login")
     }
   }, [user, authLoading, router])
@@ -49,8 +55,11 @@ export default function DashboardPage() {
     if (user) {
       loadProjects()
       loadUserProfile()
+    } else if (isGuest) {
+      loadGuestProjects()
+      setUsername('guest')
     }
-  }, [user])
+  }, [user, isGuest])
 
   const loadUserProfile = async () => {
     try {
@@ -64,6 +73,20 @@ export default function DashboardPage() {
       setUsername(data.username)
     } catch (err: any) {
       console.error('Error loading profile:', err)
+    }
+  }
+
+  const loadGuestProjects = () => {
+    try {
+      setLoading(true)
+      const guestProjects = localStorage.getItem('guestProjects')
+      if (guestProjects) {
+        setProjects(JSON.parse(guestProjects))
+      }
+    } catch (err: any) {
+      setError("Failed to load guest projects")
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -91,8 +114,9 @@ export default function DashboardPage() {
 
   const handleCreateProject = async () => {
     try {
-      if (projects.length >= 3) {
-        setError("You can only create up to 3 projects")
+      const maxProjects = isGuest ? 1 : 3
+      if (projects.length >= maxProjects) {
+        setError(isGuest ? "Guest mode allows only 1 project" : "You can only create up to 3 projects")
         return
       }
 
@@ -105,30 +129,58 @@ export default function DashboardPage() {
         br: createFormData.motorBR,
       }
 
-      const { error } = await supabase.from('projects').insert({
-        user_id: user!.id,
-        project_hash: projectHash,
-        name: createFormData.name,
-        template_type: createFormData.templateType,
-        motor_config: motorConfig,
-        workflow_data: {},
-      })
+      if (isGuest) {
+        // Save to localStorage for guest
+        const newProject = {
+          id: projectHash,
+          project_hash: projectHash,
+          name: createFormData.name,
+          template_type: createFormData.templateType,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          motor_config: motorConfig,
+          workflow_data: {},
+        }
+        const updatedProjects = [...projects, newProject]
+        localStorage.setItem('guestProjects', JSON.stringify(updatedProjects))
+        setProjects(updatedProjects)
 
-      if (error) throw error
+        setShowCreateDialog(false)
+        setCreateFormData({
+          name: "",
+          templateType: "omni-wheel",
+          motorFL: "frontLeft",
+          motorFR: "frontRight",
+          motorBL: "backLeft",
+          motorBR: "backRight",
+        })
 
-      setShowCreateDialog(false)
-      setCreateFormData({
-        name: "",
-        templateType: "omni-wheel",
-        motorFL: "frontLeft",
-        motorFR: "frontRight",
-        motorBL: "backLeft",
-        motorBR: "backRight",
-      })
-      loadProjects()
+        router.push(`/dashboard/guest/${projectHash}`)
+      } else {
+        const { error } = await supabase.from('projects').insert({
+          user_id: user!.id,
+          project_hash: projectHash,
+          name: createFormData.name,
+          template_type: createFormData.templateType,
+          motor_config: motorConfig,
+          workflow_data: {},
+        })
 
-      // Navigate to the new project
-      router.push(`/dashboard/${username}/${projectHash}`)
+        if (error) throw error
+
+        setShowCreateDialog(false)
+        setCreateFormData({
+          name: "",
+          templateType: "omni-wheel",
+          motorFL: "frontLeft",
+          motorFR: "frontRight",
+          motorBL: "backLeft",
+          motorBR: "backRight",
+        })
+        loadProjects()
+
+        router.push(`/dashboard/${username}/${projectHash}`)
+      }
     } catch (err: any) {
       setError(err.message || "Failed to create project")
     }
@@ -138,13 +190,19 @@ export default function DashboardPage() {
     if (!confirm("Are you sure you want to delete this project?")) return
 
     try {
-      const { error } = await supabase
-        .from('projects')
-        .delete()
-        .eq('id', projectId)
+      if (isGuest) {
+        const updatedProjects = projects.filter(p => p.id !== projectId)
+        localStorage.setItem('guestProjects', JSON.stringify(updatedProjects))
+        setProjects(updatedProjects)
+      } else {
+        const { error } = await supabase
+          .from('projects')
+          .delete()
+          .eq('id', projectId)
 
-      if (error) throw error
-      loadProjects()
+        if (error) throw error
+        loadProjects()
+      }
     } catch (err: any) {
       setError(err.message || "Failed to delete project")
     }
@@ -159,7 +217,7 @@ export default function DashboardPage() {
     }
   }
 
-  if (authLoading || !user) {
+  if (authLoading || (!user && !isGuest)) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <p className="text-white">Loading...</p>
@@ -167,8 +225,11 @@ export default function DashboardPage() {
     )
   }
 
+  const maxProjects = isGuest ? 1 : 3
+
   return (
     <div className="min-h-screen bg-black">
+      <Navbar />
       {/* Background gradient */}
       <div
         className="absolute inset-0 z-0"
@@ -181,15 +242,23 @@ export default function DashboardPage() {
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-white">My Projects</h1>
+            <h1 className="text-3xl font-bold text-white">
+              {isGuest ? 'Guest Projects' : 'My Projects'}
+            </h1>
             <p className="text-muted-foreground mt-1">
-              Create up to 3 robot code projects
+              {isGuest
+                ? 'Guest mode allows 1 project. Sign up to create up to 3 projects!'
+                : 'Create up to 3 robot code projects'}
             </p>
           </div>
-          <Button variant="outline" onClick={handleSignOut}>
-            <LogOut className="h-4 w-4 mr-2" />
-            Sign Out
-          </Button>
+          {isGuest && (
+            <Link href="/signup">
+              <Button variant="default">
+                <Crown className="h-4 w-4 mr-2" />
+                Create Account
+              </Button>
+            </Link>
+          )}
         </div>
 
         {error && (
@@ -202,7 +271,7 @@ export default function DashboardPage() {
         {/* Projects Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Create Project Card */}
-          {projects.length < 3 && (
+          {projects.length < maxProjects && (
             <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
               <DialogTrigger asChild>
                 <Card className="border-dashed border-2 border-border/50 bg-background/50 hover:bg-background/80 transition-colors cursor-pointer h-[240px] flex items-center justify-center">
@@ -210,7 +279,7 @@ export default function DashboardPage() {
                     <Plus className="h-12 w-12 text-muted-foreground mb-4" />
                     <p className="text-lg font-semibold text-white">Create New Project</p>
                     <p className="text-sm text-muted-foreground mt-2">
-                      {3 - projects.length} slot{3 - projects.length !== 1 ? 's' : ''} remaining
+                      {maxProjects - projects.length} slot{maxProjects - projects.length !== 1 ? 's' : ''} remaining
                     </p>
                   </CardContent>
                 </Card>

@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabase, supabaseAdmin } from '@/lib/supabase'
 
 export async function POST(request: NextRequest) {
   try {
     const { email, password, username, ftcTeamName, ftcTeamId } = await request.json()
 
-    // Sign up the user
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    // Sign up the user using regular client
+    const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
-      email_confirm: true,
+      options: {
+        data: {
+          username,
+          ftc_team_name: ftcTeamName || null,
+          ftc_team_id: ftcTeamId || null,
+        }
+      }
     })
 
     if (authError) {
@@ -30,6 +36,8 @@ export async function POST(request: NextRequest) {
     })
 
     if (profileError) {
+      // If profile creation fails, try to clean up the auth user
+      console.error('Profile creation failed:', profileError)
       return NextResponse.json({ error: profileError.message }, { status: 400 })
     }
 

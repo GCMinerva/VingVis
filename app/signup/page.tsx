@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { AlertCircle, HelpCircle } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Navbar } from "@/components/navbar"
+import { CodeBackground } from "@/components/code-background"
 import Link from "next/link"
 
 export default function SignupPage() {
@@ -57,8 +59,16 @@ export default function SignupPage() {
     }
   }
 
+  const handleContinueAsGuest = () => {
+    localStorage.setItem('guestMode', 'true')
+    localStorage.setItem('guestProjects', JSON.stringify([]))
+    router.push('/dashboard')
+  }
+
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-8">
+    <div className="min-h-screen bg-black flex flex-col">
+      <Navbar />
+      <CodeBackground />
       {/* Background gradient */}
       <div
         className="absolute inset-0 z-0"
@@ -66,6 +76,8 @@ export default function SignupPage() {
           background: "radial-gradient(ellipse 50% 35% at 50% 0%, rgba(226, 232, 240, 0.12), transparent 60%), #000000",
         }}
       />
+
+      <div className="flex-1 flex items-center justify-center p-8">
 
       <Card className="w-full max-w-md relative z-10 bg-background/80 backdrop-blur-sm border-border/50">
         <CardHeader className="space-y-1">
@@ -191,6 +203,25 @@ export default function SignupPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Creating account..." : "Sign Up"}
             </Button>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-border/50" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">Or</span>
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={handleContinueAsGuest}
+            >
+              Continue as Guest (1 Project)
+            </Button>
+
             <div className="text-sm text-center text-muted-foreground">
               Already have an account?{" "}
               <Link href="/login" className="text-primary hover:underline">
@@ -200,6 +231,7 @@ export default function SignupPage() {
           </CardFooter>
         </form>
       </Card>
+      </div>
     </div>
   )
 }
