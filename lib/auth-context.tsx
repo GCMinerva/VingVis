@@ -20,40 +20,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check active session via API
-    fetch('/api/auth/session')
-      .then(res => res.json())
-      .then(data => {
-        setUser(data.user ?? null)
-        setLoading(false)
-      })
-      .catch(() => {
-        setLoading(false)
-      })
+    // Check active session from Supabase
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+      setLoading(false)
+    })
 
     // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
+      setLoading(false)
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
   const signIn = async (email: string, password: string) => {
-    const response = await fetch('/api/auth/signin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
     })
 
-    const data = await response.json()
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to sign in')
-    }
-
+    if (error) throw error
     setUser(data.user)
   }
 
@@ -64,6 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ftcTeamName?: string,
     ftcTeamId?: string
   ) => {
+    // Call API to handle signup with profile creation
     const response = await fetch('/api/auth/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -76,35 +67,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error(data.error || 'Failed to sign up')
     }
 
-    setUser(data.user)
+    // Now sign in to establish client-side session
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (signInError) throw signInError
+    setUser(signInData.user)
   }
 
   const signOut = async () => {
-    const response = await fetch('/api/auth/signout', {
-      method: 'POST',
-    })
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to sign out')
-    }
-
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
     setUser(null)
   }
 
   const resetPassword = async (email: string) => {
-    const response = await fetch('/api/auth/reset-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
     })
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to reset password')
-    }
+    if (error) throw error
   }
 
   return (
