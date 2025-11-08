@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
+import { Navbar } from "@/components/navbar"
 import ReactFlow, {
   Node,
   Edge,
@@ -73,6 +74,7 @@ export default function ProjectEditorPage() {
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [isGuest, setIsGuest] = useState(false)
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
@@ -81,16 +83,53 @@ export default function ProjectEditorPage() {
   const [newNodeType, setNewNodeType] = useState<keyof typeof nodeTypes>('move')
 
   useEffect(() => {
-    if (!authLoading && !user) {
+    const guestMode = localStorage.getItem('guestMode') === 'true'
+    setIsGuest(guestMode)
+
+    if (!authLoading && !user && !guestMode) {
       router.push("/login")
     }
   }, [user, authLoading, router])
 
   useEffect(() => {
-    if (user && params.projecthash) {
-      loadProject()
+    if (params.projecthash) {
+      if (user) {
+        loadProject()
+      } else if (isGuest) {
+        loadGuestProject()
+      }
     }
-  }, [user, params.projecthash])
+  }, [user, isGuest, params.projecthash])
+
+  const loadGuestProject = () => {
+    try {
+      setLoading(true)
+      const guestProjects = localStorage.getItem('guestProjects')
+      if (guestProjects) {
+        const projects = JSON.parse(guestProjects)
+        const foundProject = projects.find((p: any) => p.project_hash === params.projecthash)
+
+        if (foundProject) {
+          setProject(foundProject)
+
+          // Load saved workflow if exists
+          if (foundProject.workflow_data && foundProject.workflow_data.nodes) {
+            setNodes(foundProject.workflow_data.nodes)
+            setEdges(foundProject.workflow_data.edges || [])
+          }
+        } else {
+          router.push('/dashboard')
+        }
+      } else {
+        router.push('/dashboard')
+      }
+    } catch (err: any) {
+      console.error('Error loading guest project:', err)
+      router.push('/dashboard')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const loadProject = async () => {
     try {
@@ -128,18 +167,42 @@ export default function ProjectEditorPage() {
 
     try {
       setSaving(true)
-      const { error } = await supabase
-        .from('projects')
-        .update({
-          workflow_data: {
-            nodes,
-            edges,
-          },
-        })
-        .eq('id', project.id)
 
-      if (error) throw error
-      alert('Project saved successfully!')
+      if (isGuest) {
+        // Save to localStorage for guest
+        const guestProjects = localStorage.getItem('guestProjects')
+        if (guestProjects) {
+          const projects = JSON.parse(guestProjects)
+          const updatedProjects = projects.map((p: any) => {
+            if (p.project_hash === project.id || p.project_hash === params.projecthash) {
+              return {
+                ...p,
+                workflow_data: {
+                  nodes,
+                  edges,
+                },
+                updated_at: new Date().toISOString(),
+              }
+            }
+            return p
+          })
+          localStorage.setItem('guestProjects', JSON.stringify(updatedProjects))
+          alert('Project saved successfully!')
+        }
+      } else {
+        const { error } = await supabase
+          .from('projects')
+          .update({
+            workflow_data: {
+              nodes,
+              edges,
+            },
+          })
+          .eq('id', project.id)
+
+        if (error) throw error
+        alert('Project saved successfully!')
+      }
     } catch (err: any) {
       alert('Failed to save project: ' + err.message)
     } finally {
@@ -288,16 +351,20 @@ export default function ProjectEditorPage() {
     }
   }
 
-  if (authLoading || loading || !project) {
+  if (authLoading || (loading && !isGuest) || !project) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <p className="text-white">Loading...</p>
+      <div className="min-h-screen bg-black flex flex-col">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-white">Loading...</p>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="h-screen bg-black flex flex-col">
+      <Navbar />
       {/* Top Bar */}
       <div className="bg-background/80 backdrop-blur-sm border-b border-border/50 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">

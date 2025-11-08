@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseAdmin } from '@/lib/supabase'
 
 // GET all projects for the current user
 export async function GET(request: NextRequest) {
@@ -59,7 +59,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'You can only create up to 3 projects' }, { status: 400 })
     }
 
-    const { data, error } = await supabase.from('projects').insert({
+    // Use admin client to bypass RLS policies
+    const { data, error } = await supabaseAdmin.from('projects').insert({
       user_id: user.id,
       project_hash: projectHash,
       name,
@@ -69,6 +70,7 @@ export async function POST(request: NextRequest) {
     }).select().single()
 
     if (error) {
+      console.error('Project creation error:', error)
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
