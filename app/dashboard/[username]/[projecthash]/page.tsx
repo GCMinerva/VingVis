@@ -34,6 +34,7 @@ import {
   Move,
   Target,
   Spline,
+  Pencil,
 } from "lucide-react"
 
 type Project = {
@@ -164,7 +165,7 @@ export default function CurvesEditor() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const animationFrameRef = useRef<number>()
+  const animationFrameRef = useRef<number | undefined>(undefined)
 
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
@@ -187,6 +188,14 @@ export default function CurvesEditor() {
   const [robotHeading, setRobotHeading] = useState(0)
   const [isDraggingRobot, setIsDraggingRobot] = useState(false)
   const [path, setPath] = useState<{x: number, y: number, heading: number}[]>([])
+
+  // Waypoint dragging states
+  const [draggingWaypointIndex, setDraggingWaypointIndex] = useState<number | null>(null)
+  const [hoverWaypointIndex, setHoverWaypointIndex] = useState<number | null>(null)
+  const [isAddingWaypoint, setIsAddingWaypoint] = useState(false)
+  const [isDrawingMode, setIsDrawingMode] = useState(false)
+  const [isDrawing, setIsDrawing] = useState(false)
+  const [lastDrawnPoint, setLastDrawnPoint] = useState<{ x: number; y: number } | null>(null)
 
   const [motors, setMotors] = useState<Motor[]>([
     { name: 'motorFL', port: 0, reversed: false },
@@ -306,15 +315,33 @@ export default function CurvesEditor() {
       waypoints.forEach((point, i) => {
         const x = (point.x / 144) * canvas.width
         const y = (point.y / 144) * canvas.height
+        const isHovered = hoverWaypointIndex === i
+        const isDragging = draggingWaypointIndex === i
+        const radius = isHovered || isDragging ? 7 : 5
+
+        // Outer glow for hover/drag
+        if (isHovered || isDragging) {
+          ctx.fillStyle = i === 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(59, 130, 246, 0.3)'
+          ctx.beginPath()
+          ctx.arc(x, y, radius + 3, 0, Math.PI * 2)
+          ctx.fill()
+        }
+
+        // Waypoint circle
         ctx.fillStyle = i === 0 ? '#10b981' : '#3b82f6'
         ctx.beginPath()
-        ctx.arc(x, y, 4, 0, Math.PI * 2)
+        ctx.arc(x, y, radius, 0, Math.PI * 2)
         ctx.fill()
+
+        // White border for better visibility
+        ctx.strokeStyle = '#fff'
+        ctx.lineWidth = 2
+        ctx.stroke()
 
         // Label waypoints
         ctx.fillStyle = '#fff'
         ctx.font = '10px bold monospace'
-        ctx.fillText(`${i}`, x + 8, y - 8)
+        ctx.fillText(`${i}`, x + 10, y - 10)
       })
 
       // Animated portion
@@ -369,7 +396,7 @@ export default function CurvesEditor() {
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves])
+  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves, hoverWaypointIndex, draggingWaypointIndex])
 
   useEffect(() => {
     drawField()
@@ -484,6 +511,67 @@ export default function CurvesEditor() {
     }
   }
 
+  // Helper function to find waypoint at position
+  const findWaypointAtPosition = (x: number, y: number, canvas: HTMLCanvasElement): number | null => {
+    const waypoints = getWaypoints()
+    const threshold = 12 // pixels
+
+    for (let i = waypoints.length - 1; i >= 0; i--) {
+      const wx = (waypoints[i].x / 144) * canvas.width
+      const wy = (waypoints[i].y / 144) * canvas.height
+      const canvasX = (x / 144) * canvas.width
+      const canvasY = (y / 144) * canvas.height
+      const distance = Math.sqrt(Math.pow(canvasX - wx, 2) + Math.pow(canvasY - wy, 2))
+
+      if (distance < threshold) {
+        return i
+      }
+    }
+    return null
+  }
+
+  // Update waypoint position by index
+  const updateWaypointPosition = (index: number, x: number, y: number) => {
+    if (index === 0) {
+      // Update robot start position
+      setRobotX(x)
+      setRobotY(y)
+    } else {
+      // Update action block
+      const actionIndex = index - 1
+      if (actionIndex < actions.length) {
+        const action = actions[actionIndex]
+        if (action.type === 'moveToPosition' || action.type === 'splineTo') {
+          updateAction(action.id, { targetX: x, targetY: y })
+        }
+      }
+    }
+  }
+
+  // Delete waypoint by index
+  const deleteWaypoint = (index: number) => {
+    if (index === 0) return // Can't delete start position
+
+    const actionIndex = index - 1
+    if (actionIndex < actions.length) {
+      deleteAction(actions[actionIndex].id)
+    }
+  }
+
+  // Add waypoint at position
+  const addWaypointAtPosition = (x: number, y: number) => {
+    const newAction: ActionBlock = {
+      id: Date.now().toString(),
+      type: 'moveToPosition',
+      label: 'Move to Position',
+      targetX: x,
+      targetY: y,
+      targetHeading: robotHeading,
+      curveType: useCurves ? 'spline' : 'linear',
+    }
+    setActions([...actions, newAction])
+  }
+
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -492,15 +580,44 @@ export default function CurvesEditor() {
     const x = ((e.clientX - rect.left) / rect.width) * 144
     const y = ((e.clientY - rect.top) / rect.height) * 144
 
+    // Drawing mode - start drawing
+    if (isDrawingMode) {
+      setIsDrawing(true)
+      setLastDrawnPoint({ x, y })
+      addWaypointAtPosition(x, y)
+      return
+    }
+
+    // Check if clicking on a waypoint
+    const waypointIndex = findWaypointAtPosition(x, y, canvas)
+
+    if (waypointIndex !== null) {
+      if (e.button === 2) {
+        // Right-click to delete
+        e.preventDefault()
+        deleteWaypoint(waypointIndex)
+        return
+      }
+      // Left-click to drag
+      setDraggingWaypointIndex(waypointIndex)
+      return
+    }
+
+    // Check if clicking on robot (for backward compatibility)
     const distance = Math.sqrt(Math.pow(x - robotX, 2) + Math.pow(y - robotY, 2))
     if (distance < 15) {
       setIsDraggingRobot(true)
+      return
+    }
+
+    // Shift+click or Ctrl+click to add waypoint
+    if (e.shiftKey || e.ctrlKey) {
+      addWaypointAtPosition(x, y)
+      setIsAddingWaypoint(true)
     }
   }
 
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDraggingRobot) return
-
     const canvas = canvasRef.current
     if (!canvas) return
 
@@ -508,12 +625,64 @@ export default function CurvesEditor() {
     const x = Math.max(9, Math.min(135, ((e.clientX - rect.left) / rect.width) * 144))
     const y = Math.max(9, Math.min(135, ((e.clientY - rect.top) / rect.height) * 144))
 
-    setRobotX(x)
-    setRobotY(y)
+    // Drawing mode - continuously add waypoints
+    if (isDrawing && lastDrawnPoint) {
+      const distance = Math.sqrt(Math.pow(x - lastDrawnPoint.x, 2) + Math.pow(y - lastDrawnPoint.y, 2))
+      // Add waypoint every 10 inches of distance
+      if (distance > 10) {
+        addWaypointAtPosition(x, y)
+        setLastDrawnPoint({ x, y })
+      }
+      return
+    }
+
+    // Update hover state (only when not dragging)
+    if (!draggingWaypointIndex && !isDraggingRobot) {
+      const waypointIndex = findWaypointAtPosition(x, y, canvas)
+      setHoverWaypointIndex(waypointIndex)
+    }
+
+    // Handle dragging
+    if (draggingWaypointIndex !== null) {
+      updateWaypointPosition(draggingWaypointIndex, x, y)
+      return
+    }
+
+    if (isDraggingRobot) {
+      setRobotX(x)
+      setRobotY(y)
+      return
+    }
   }
 
   const handleCanvasMouseUp = () => {
     setIsDraggingRobot(false)
+    setDraggingWaypointIndex(null)
+    setIsAddingWaypoint(false)
+    setIsDrawing(false)
+    setLastDrawnPoint(null)
+  }
+
+  const handleCanvasContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault() // Prevent default context menu
+  }
+
+  const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isDrawingMode) return // Don't add on double-click in drawing mode
+
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const rect = canvas.getBoundingClientRect()
+    const x = ((e.clientX - rect.left) / rect.width) * 144
+    const y = ((e.clientY - rect.top) / rect.height) * 144
+
+    // Check if double-clicking on a waypoint (to avoid adding duplicate)
+    const waypointIndex = findWaypointAtPosition(x, y, canvas)
+    if (waypointIndex !== null) return
+
+    // Add waypoint at double-click position
+    addWaypointAtPosition(x, y)
   }
 
   const loadGuestProject = () => {
@@ -840,6 +1009,14 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
             <Button onClick={() => setShowRuler(!showRuler)} size="sm" variant="ghost">
               <Ruler className="h-4 w-4 mr-2" />
               {showRuler ? 'Hide' : 'Show'} Ruler
+            </Button>
+            <Button
+              onClick={() => setIsDrawingMode(!isDrawingMode)}
+              size="sm"
+              variant={isDrawingMode ? 'default' : 'ghost'}
+            >
+              <Pencil className="h-4 w-4 mr-2" />
+              {isDrawingMode ? 'Exit Draw' : 'Draw Mode'}
             </Button>
           </div>
         </div>
@@ -1187,16 +1364,44 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                 {useCurves ? 'Smooth Curves' : 'Linear'}
               </div>
             </div>
-            <div className="aspect-square bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden cursor-move">
+
+            {/* Instructions */}
+            <div className="mb-3 p-2 bg-zinc-800/50 rounded border border-zinc-700/50 text-xs text-zinc-400">
+              <div className="font-semibold text-zinc-300 mb-1">Interactive Controls:</div>
+              <div className="space-y-0.5">
+                {isDrawingMode ? (
+                  <>
+                    <div className="text-blue-300">• <span className="font-semibold">Draw Mode Active</span></div>
+                    <div>• <span className="text-green-400">Click & Drag</span>: Draw path</div>
+                  </>
+                ) : (
+                  <>
+                    <div>• <span className="text-blue-400">Double-Click</span>: Add waypoint</div>
+                    <div>• <span className="text-green-400">Drag waypoint</span>: Move</div>
+                    <div>• <span className="text-red-400">Right-Click</span>: Delete</div>
+                    <div>• <span className="text-purple-400">Shift+Click</span>: Quick add</div>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="aspect-square bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden">
               <canvas
                 ref={canvasRef}
                 width={400}
                 height={400}
                 className="w-full h-full"
+                style={{
+                  cursor: isDrawingMode ? 'crosshair' :
+                          hoverWaypointIndex !== null ? 'pointer' :
+                          draggingWaypointIndex !== null || isDraggingRobot ? 'grabbing' :
+                          'default'
+                }}
                 onMouseDown={handleCanvasMouseDown}
                 onMouseMove={handleCanvasMouseMove}
                 onMouseUp={handleCanvasMouseUp}
                 onMouseLeave={handleCanvasMouseUp}
+                onContextMenu={handleCanvasContextMenu}
+                onDoubleClick={handleCanvasDoubleClick}
               />
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
