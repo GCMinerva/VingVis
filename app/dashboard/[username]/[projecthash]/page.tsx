@@ -45,6 +45,12 @@ import {
   Waypoints,
   RotateCcw,
   Circle,
+  Undo2,
+  Redo2,
+  Copy,
+  Trophy,
+  Activity,
+  TrendingUp,
 } from "lucide-react"
 
 type Project = {
@@ -68,8 +74,21 @@ type ActionBlock = {
   targetHeading?: number
   curveType?: 'linear' | 'spline' | 'bezier'
   servo?: string
+  servoName?: string
+  motorName?: string
   position?: number
   customCode?: string
+  score?: number
+  condition?: string
+  loopCount?: number
+}
+
+type TelemetryData = {
+  totalDistance: number
+  estimatedTime: number
+  averageSpeed: number
+  currentScore: number
+  actionCount: number
 }
 
 type Motor = {
@@ -261,6 +280,18 @@ export default function CurvesEditor() {
   const [digitalDevices, setDigitalDevices] = useState<DigitalDevice[]>([])
   const [analogDevices, setAnalogDevices] = useState<AnalogDevice[]>([])
   const [hasExpansionHub, setHasExpansionHub] = useState(false)
+
+  // Undo/Redo
+  const [actionHistory, setActionHistory] = useState<ActionBlock[][]>([])
+  const [historyIndex, setHistoryIndex] = useState(-1)
+
+  // Score and telemetry
+  const [currentScore, setCurrentScore] = useState(0)
+  const [showTelemetry, setShowTelemetry] = useState(true)
+
+  // Servo/Motor preview states
+  const [servoPositions, setServoPositions] = useState<{[key: string]: number}>({})
+  const [motorSpeeds, setMotorSpeeds] = useState<{[key: string]: number}>({})
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -831,19 +862,81 @@ export default function CurvesEditor() {
       targetY: robotY,
       targetHeading: robotHeading,
       curveType: 'linear',
+      score: 0,
     }
-    setActions([...actions, newAction])
+    const newActions = [...actions, newAction]
+    saveToHistory(newActions)
+    setActions(newActions)
+  }
+
+  const saveToHistory = (newActions: ActionBlock[]) => {
+    const newHistory = actionHistory.slice(0, historyIndex + 1)
+    newHistory.push(newActions)
+    setActionHistory(newHistory)
+    setHistoryIndex(newHistory.length - 1)
+  }
+
+  const undo = () => {
+    if (historyIndex > 0) {
+      setHistoryIndex(historyIndex - 1)
+      setActions(actionHistory[historyIndex - 1])
+    }
+  }
+
+  const redo = () => {
+    if (historyIndex < actionHistory.length - 1) {
+      setHistoryIndex(historyIndex + 1)
+      setActions(actionHistory[historyIndex + 1])
+    }
+  }
+
+  const cloneAction = (action: ActionBlock) => {
+    const cloned: ActionBlock = {
+      ...action,
+      id: Date.now().toString(),
+    }
+    const newActions = [...actions, cloned]
+    saveToHistory(newActions)
+    setActions(newActions)
   }
 
   const deleteAction = (id: string) => {
-    setActions(actions.filter(a => a.id !== id))
+    const newActions = actions.filter(a => a.id !== id)
+    saveToHistory(newActions)
+    setActions(newActions)
     if (selectedAction?.id === id) setSelectedAction(null)
   }
 
   const updateAction = (id: string, updates: Partial<ActionBlock>) => {
-    setActions(actions.map(a => a.id === id ? { ...a, ...updates } : a))
+    const newActions = actions.map(a => a.id === id ? { ...a, ...updates } : a)
+    setActions(newActions)
     if (selectedAction?.id === id) {
       setSelectedAction({ ...selectedAction, ...updates })
+    }
+  }
+
+  // Calculate telemetry data
+  const calculateTelemetry = (): TelemetryData => {
+    const waypoints = getWaypoints()
+    let totalDistance = 0
+
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const dx = waypoints[i + 1].x - waypoints[i].x
+      const dy = waypoints[i + 1].y - waypoints[i].y
+      totalDistance += Math.sqrt(dx * dx + dy * dy)
+    }
+
+    const averageSpeed = 24 // inches per second (typical robot speed)
+    const estimatedTime = totalDistance / averageSpeed
+
+    const totalScore = actions.reduce((sum, action) => sum + (action.score || 0), 0)
+
+    return {
+      totalDistance,
+      estimatedTime,
+      averageSpeed,
+      currentScore: totalScore,
+      actionCount: actions.length,
     }
   }
 
@@ -1043,6 +1136,14 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
       <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-2 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
           <h1 className="text-base font-bold text-white">{project.name}</h1>
+
+          {/* Score Display */}
+          <div className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-yellow-600/20 to-orange-600/20 border border-yellow-600/30 rounded">
+            <Trophy className="h-4 w-4 text-yellow-500" />
+            <span className="text-sm font-bold text-yellow-400">{calculateTelemetry().currentScore}</span>
+            <span className="text-xs text-yellow-600">pts</span>
+          </div>
+
           <div className="flex items-center gap-1">
             {!isAnimating ? (
               <Button onClick={startAnimation} size="sm" variant="default" disabled={actions.length === 0}>
@@ -1071,9 +1172,19 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
               <Pencil className="h-4 w-4 mr-2" />
               {isDrawingMode ? 'Exit Draw' : 'Draw Mode'}
             </Button>
+            <Button onClick={undo} disabled={historyIndex <= 0} size="sm" variant="ghost">
+              <Undo2 className="h-4 w-4" />
+            </Button>
+            <Button onClick={redo} disabled={historyIndex >= actionHistory.length - 1} size="sm" variant="ghost">
+              <Redo2 className="h-4 w-4" />
+            </Button>
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <Button onClick={() => setShowTelemetry(!showTelemetry)} size="sm" variant="ghost">
+            <Activity className="h-4 w-4 mr-2" />
+            {showTelemetry ? 'Hide' : 'Show'} Stats
+          </Button>
           <div className="flex items-center gap-2">
             <Label className="text-xs text-zinc-400">Curves</Label>
             <Switch checked={useCurves} onCheckedChange={setUseCurves} />
@@ -1565,11 +1676,18 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                   onClick={() => setSelectedAction(action)}
                 >
                   <CardContent className="p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-1">
                       <div className="text-xs font-mono text-zinc-500 w-8">{index + 1}</div>
                       <ChevronRight className="h-4 w-4 text-zinc-600" />
-                      <div>
-                        <div className="font-medium text-sm text-white">{action.label}</div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium text-sm text-white">{action.label}</div>
+                          {action.score && action.score > 0 && (
+                            <div className="text-xs bg-yellow-600/20 text-yellow-400 px-1.5 py-0.5 rounded">
+                              +{action.score}
+                            </div>
+                          )}
+                        </div>
                         <div className="text-xs text-zinc-500">
                           {action.type === 'moveToPosition' || action.type === 'splineTo'
                             ? `to (${action.targetX?.toFixed(1)}, ${action.targetY?.toFixed(1)}) @ ${action.targetHeading?.toFixed(0)}°`
@@ -1585,14 +1703,26 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                         </div>
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={(e) => { e.stopPropagation(); deleteAction(action.id); }}
-                      className="h-8 w-8 p-0"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-zinc-500 hover:text-red-500" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => { e.stopPropagation(); cloneAction(action); }}
+                        className="h-8 w-8 p-0"
+                        title="Duplicate"
+                      >
+                        <Copy className="h-3.5 w-3.5 text-zinc-500 hover:text-blue-500" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => { e.stopPropagation(); deleteAction(action.id); }}
+                        className="h-8 w-8 p-0"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-zinc-500 hover:text-red-500" />
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -1602,10 +1732,86 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
 
         {/* Right: Config + Preview */}
         <div className="w-96 border-l border-zinc-800 flex flex-col bg-zinc-900">
+          {/* Telemetry Panel */}
+          {showTelemetry && (
+            <div className="border-b border-zinc-800 p-4 bg-zinc-900/50">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold text-white">Telemetry</h3>
+                <TrendingUp className="h-4 w-4 text-blue-400" />
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2 bg-zinc-800 rounded">
+                  <div className="text-zinc-500">Distance</div>
+                  <div className="font-mono text-white">{calculateTelemetry().totalDistance.toFixed(1)}"</div>
+                </div>
+                <div className="p-2 bg-zinc-800 rounded">
+                  <div className="text-zinc-500">Est. Time</div>
+                  <div className="font-mono text-white">{calculateTelemetry().estimatedTime.toFixed(1)}s</div>
+                </div>
+                <div className="p-2 bg-zinc-800 rounded">
+                  <div className="text-zinc-500">Actions</div>
+                  <div className="font-mono text-white">{calculateTelemetry().actionCount}</div>
+                </div>
+                <div className="p-2 bg-zinc-800 rounded">
+                  <div className="text-zinc-500">Avg Speed</div>
+                  <div className="font-mono text-white">{calculateTelemetry().averageSpeed}"/s</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Servo/Motor Preview */}
+          <div className="border-b border-zinc-800 p-4 bg-zinc-900/50">
+            <h3 className="text-sm font-bold text-white mb-2">Hardware Status</h3>
+            <div className="space-y-2">
+              {servos.slice(0, 3).map((servo, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="text-xs text-zinc-400 w-16 truncate">{servo.name}</div>
+                  <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 transition-all duration-300"
+                      style={{ width: `${(servoPositions[servo.name] || 0.5) * 100}%` }}
+                    />
+                  </div>
+                  <div className="text-xs font-mono text-zinc-500 w-10">
+                    {((servoPositions[servo.name] || 0.5) * 100).toFixed(0)}%
+                  </div>
+                </div>
+              ))}
+              {motors.slice(0, 4).map((motor, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="text-xs text-zinc-400 w-16 truncate">{motor.name}</div>
+                  <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-green-500 transition-all duration-300"
+                      style={{ width: `${Math.abs(motorSpeeds[motor.name] || 0) * 100}%` }}
+                    />
+                  </div>
+                  <div className="text-xs font-mono text-zinc-500 w-10">
+                    {((motorSpeeds[motor.name] || 0) * 100).toFixed(0)}%
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {selectedAction && (
             <div className="border-b border-zinc-800 p-4 max-h-64 overflow-auto">
               <h3 className="text-sm font-bold text-white mb-3">Configure: {selectedAction.label}</h3>
               <div className="space-y-3">
+                {/* Score Configuration */}
+                {(selectedAction.type === 'moveToPosition' || selectedAction.type === 'custom') && (
+                  <div>
+                    <Label className="text-xs text-zinc-400">Score Points</Label>
+                    <Input
+                      type="number"
+                      value={selectedAction.score || 0}
+                      onChange={(e) => updateAction(selectedAction.id, { score: parseInt(e.target.value) || 0 })}
+                      className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
+                    />
+                  </div>
+                )}
+
                 {(selectedAction.type === 'moveToPosition' || selectedAction.type === 'splineTo') && (
                   <>
                     <div>
@@ -1706,6 +1912,97 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                       className="mt-2"
                     />
                     <div className="text-xs text-zinc-500 mt-1">{((selectedAction.position || 0.5) * 100).toFixed(0)}%</div>
+                  </div>
+                )}
+                {(selectedAction.type === 'setServo' || selectedAction.type.startsWith('servo') || selectedAction.type === 'continuousServo') && (
+                  <>
+                    <div>
+                      <Label className="text-xs text-zinc-400">Select Servo</Label>
+                      <Select
+                        value={selectedAction.servoName || servos[0]?.name}
+                        onValueChange={(v) => updateAction(selectedAction.id, { servoName: v })}
+                      >
+                        <SelectTrigger className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {servos.map((servo) => (
+                            <SelectItem key={servo.name} value={servo.name}>{servo.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-zinc-400">Position</Label>
+                      <Slider
+                        value={[selectedAction.position || 0.5]}
+                        onValueChange={([v]) => {
+                          updateAction(selectedAction.id, { position: v })
+                          setServoPositions({ ...servoPositions, [selectedAction.servoName || servos[0]?.name]: v })
+                        }}
+                        max={1}
+                        step={0.01}
+                        className="mt-2"
+                      />
+                      <div className="text-xs text-zinc-500 mt-1">{((selectedAction.position || 0.5) * 100).toFixed(0)}%</div>
+                    </div>
+                  </>
+                )}
+                {(selectedAction.type === 'runMotor' || selectedAction.type === 'setMotorPower') && (
+                  <>
+                    <div>
+                      <Label className="text-xs text-zinc-400">Select Motor</Label>
+                      <Select
+                        value={selectedAction.motorName || motors[4]?.name}
+                        onValueChange={(v) => updateAction(selectedAction.id, { motorName: v })}
+                      >
+                        <SelectTrigger className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {motors.slice(4).map((motor) => (
+                            <SelectItem key={motor.name} value={motor.name}>{motor.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-zinc-400">Power</Label>
+                      <Slider
+                        value={[selectedAction.power || 0.5]}
+                        onValueChange={([v]) => {
+                          updateAction(selectedAction.id, { power: v })
+                          setMotorSpeeds({ ...motorSpeeds, [selectedAction.motorName || motors[0]?.name]: v })
+                        }}
+                        max={1}
+                        step={0.1}
+                        className="mt-2"
+                      />
+                      <div className="text-xs text-zinc-500 mt-1">{((selectedAction.power || 0.5) * 100).toFixed(0)}%</div>
+                    </div>
+                  </>
+                )}
+                {(selectedAction.type === 'loop') && (
+                  <div>
+                    <Label className="text-xs text-zinc-400">Loop Count</Label>
+                    <Input
+                      type="number"
+                      value={selectedAction.loopCount || 1}
+                      onChange={(e) => updateAction(selectedAction.id, { loopCount: parseInt(e.target.value) || 1 })}
+                      className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
+                    />
+                  </div>
+                )}
+                {(selectedAction.type === 'waitUntil' || selectedAction.type === 'waitForSensor' || selectedAction.type === 'if') && (
+                  <div>
+                    <Label className="text-xs text-zinc-400">Condition</Label>
+                    <Input
+                      type="text"
+                      value={selectedAction.condition || ''}
+                      onChange={(e) => updateAction(selectedAction.id, { condition: e.target.value })}
+                      placeholder="e.g., sensor > 10"
+                      className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
+                    />
                   </div>
                 )}
                 {selectedAction.type === 'custom' && (
