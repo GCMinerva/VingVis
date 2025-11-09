@@ -34,6 +34,23 @@ import {
   Move,
   Target,
   Spline,
+  Pencil,
+  Repeat,
+  GitBranch,
+  Zap,
+  Eye,
+  Gauge,
+  CircleDot,
+  Radar,
+  Waypoints,
+  RotateCcw,
+  Circle,
+  Undo2,
+  Redo2,
+  Copy,
+  Trophy,
+  Activity,
+  TrendingUp,
 } from "lucide-react"
 
 type Project = {
@@ -57,43 +74,92 @@ type ActionBlock = {
   targetHeading?: number
   curveType?: 'linear' | 'spline' | 'bezier'
   servo?: string
+  servoName?: string
+  motorName?: string
   position?: number
   customCode?: string
+  score?: number
+  condition?: string
+  loopCount?: number
+}
+
+type TelemetryData = {
+  totalDistance: number
+  estimatedTime: number
+  averageSpeed: number
+  currentScore: number
+  actionCount: number
 }
 
 type Motor = {
   name: string
   port: number
   reversed: boolean
+  hub?: 'control' | 'expansion'
 }
 
 type Servo = {
   name: string
   port: number
+  hub?: 'control' | 'expansion'
+  type?: 'standard' | 'continuous'
+}
+
+type I2CDevice = {
+  name: string
+  type: 'imu' | 'distance' | 'color' | 'servo-controller'
+  address: string
+  port: number
+}
+
+type DigitalDevice = {
+  name: string
+  type: 'touch' | 'limit-switch' | 'magnetic'
+  port: number
+}
+
+type AnalogDevice = {
+  name: string
+  type: 'potentiometer' | 'light-sensor'
+  port: number
 }
 
 const BLOCK_TYPES = {
   movement: [
-    { id: 'moveToPosition', label: 'Move to Position', icon: Target },
-    { id: 'splineTo', label: 'Spline to Position', icon: Spline },
-    { id: 'forward', label: 'Move Forward', icon: ArrowUp },
-    { id: 'backward', label: 'Move Backward', icon: ArrowDown },
-    { id: 'strafeLeft', label: 'Strafe Left', icon: ArrowLeft },
-    { id: 'strafeRight', label: 'Strafe Right', icon: ArrowRight },
-    { id: 'turnLeft', label: 'Turn Left', icon: RotateCw },
-    { id: 'turnRight', label: 'Turn Right', icon: RotateCw },
-    { id: 'turnToHeading', label: 'Turn to Heading', icon: RotateCw },
+    { id: 'moveToPosition', label: 'Move to Position', icon: Target, description: 'Move to specific coordinates' },
+    { id: 'splineTo', label: 'Spline to Position', icon: Spline, description: 'Smooth curve to position' },
+    { id: 'forward', label: 'Move Forward', icon: ArrowUp, description: 'Move forward by distance' },
+    { id: 'backward', label: 'Move Backward', icon: ArrowDown, description: 'Move backward by distance' },
+    { id: 'strafeLeft', label: 'Strafe Left', icon: ArrowLeft, description: 'Strafe left by distance' },
+    { id: 'strafeRight', label: 'Strafe Right', icon: ArrowRight, description: 'Strafe right by distance' },
+    { id: 'turnLeft', label: 'Turn Left', icon: RotateCcw, description: 'Turn left by angle' },
+    { id: 'turnRight', label: 'Turn Right', icon: RotateCw, description: 'Turn right by angle' },
+    { id: 'turnToHeading', label: 'Turn to Heading', icon: Target, description: 'Turn to specific heading' },
+    { id: 'arcMove', label: 'Arc Movement', icon: Circle, description: 'Move in an arc' },
+    { id: 'pivotTurn', label: 'Pivot Turn', icon: CircleDot, description: 'Turn around one wheel' },
+    { id: 'followPath', label: 'Follow Path', icon: Waypoints, description: 'Follow complex path' },
   ],
   mechanisms: [
-    { id: 'servo1', label: 'Servo 1', icon: Settings },
-    { id: 'servo2', label: 'Servo 2', icon: Settings },
-    { id: 'servo3', label: 'Servo 3', icon: Settings },
-    { id: 'motor1', label: 'Motor 1', icon: Settings },
-    { id: 'motor2', label: 'Motor 2', icon: Settings },
+    { id: 'setServo', label: 'Set Servo Position', icon: Settings, description: 'Set servo to position' },
+    { id: 'continuousServo', label: 'Continuous Servo', icon: RotateCw, description: 'Run continuous servo' },
+    { id: 'runMotor', label: 'Run Motor', icon: Zap, description: 'Run mechanism motor' },
+    { id: 'stopMotor', label: 'Stop Motor', icon: Pause, description: 'Stop mechanism motor' },
+    { id: 'setMotorPower', label: 'Set Motor Power', icon: Gauge, description: 'Set motor power level' },
+  ],
+  sensors: [
+    { id: 'readIMU', label: 'Read IMU', icon: Radar, description: 'Read IMU orientation' },
+    { id: 'readDistance', label: 'Read Distance', icon: Eye, description: 'Read distance sensor' },
+    { id: 'readColor', label: 'Read Color', icon: CircleDot, description: 'Read color sensor' },
+    { id: 'waitForSensor', label: 'Wait for Sensor', icon: Timer, description: 'Wait until sensor condition' },
+    { id: 'readTouch', label: 'Read Touch', icon: CircleDot, description: 'Read touch sensor' },
   ],
   control: [
-    { id: 'wait', label: 'Wait', icon: Timer },
-    { id: 'custom', label: 'Custom Code', icon: Code },
+    { id: 'wait', label: 'Wait', icon: Timer, description: 'Wait for duration' },
+    { id: 'waitUntil', label: 'Wait Until', icon: Timer, description: 'Wait until condition' },
+    { id: 'loop', label: 'Loop', icon: Repeat, description: 'Repeat actions' },
+    { id: 'if', label: 'If/Else', icon: GitBranch, description: 'Conditional execution' },
+    { id: 'parallel', label: 'Run Parallel', icon: Zap, description: 'Run actions in parallel' },
+    { id: 'custom', label: 'Custom Code', icon: Code, description: 'Insert custom Java code' },
   ]
 }
 
@@ -164,15 +230,16 @@ export default function CurvesEditor() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const animationFrameRef = useRef<number>()
+  const animationFrameRef = useRef<number | undefined>(undefined)
 
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [isGuest, setIsGuest] = useState(false)
   const [showRuler, setShowRuler] = useState(false)
-  const [activeTab, setActiveTab] = useState<'movement' | 'mechanisms' | 'control'>('movement')
+  const [activeTab, setActiveTab] = useState<'movement' | 'mechanisms' | 'sensors' | 'control'>('movement')
   const [pathMode, setPathMode] = useState<'roadrunner' | 'pedropathing' | 'simple'>('simple')
+  const [blockSearchQuery, setBlockSearchQuery] = useState('')
   const [useCurves, setUseCurves] = useState(true)
 
   const [actions, setActions] = useState<ActionBlock[]>([])
@@ -188,6 +255,14 @@ export default function CurvesEditor() {
   const [isDraggingRobot, setIsDraggingRobot] = useState(false)
   const [path, setPath] = useState<{x: number, y: number, heading: number}[]>([])
 
+  // Waypoint dragging states
+  const [draggingWaypointIndex, setDraggingWaypointIndex] = useState<number | null>(null)
+  const [hoverWaypointIndex, setHoverWaypointIndex] = useState<number | null>(null)
+  const [isAddingWaypoint, setIsAddingWaypoint] = useState(false)
+  const [isDrawingMode, setIsDrawingMode] = useState(false)
+  const [isDrawing, setIsDrawing] = useState(false)
+  const [lastDrawnPoint, setLastDrawnPoint] = useState<{ x: number; y: number } | null>(null)
+
   const [motors, setMotors] = useState<Motor[]>([
     { name: 'motorFL', port: 0, reversed: false },
     { name: 'motorFR', port: 1, reversed: false },
@@ -195,10 +270,28 @@ export default function CurvesEditor() {
     { name: 'motorBR', port: 3, reversed: false },
   ])
   const [servos, setServos] = useState<Servo[]>([
-    { name: 'servo1', port: 0 },
-    { name: 'servo2', port: 1 },
-    { name: 'servo3', port: 2 },
+    { name: 'servo1', port: 0, hub: 'control', type: 'standard' },
+    { name: 'servo2', port: 1, hub: 'control', type: 'standard' },
+    { name: 'servo3', port: 2, hub: 'control', type: 'standard' },
   ])
+  const [i2cDevices, setI2cDevices] = useState<I2CDevice[]>([
+    { name: 'imu', type: 'imu', address: '0x28', port: 0 },
+  ])
+  const [digitalDevices, setDigitalDevices] = useState<DigitalDevice[]>([])
+  const [analogDevices, setAnalogDevices] = useState<AnalogDevice[]>([])
+  const [hasExpansionHub, setHasExpansionHub] = useState(false)
+
+  // Undo/Redo
+  const [actionHistory, setActionHistory] = useState<ActionBlock[][]>([])
+  const [historyIndex, setHistoryIndex] = useState(-1)
+
+  // Score and telemetry
+  const [currentScore, setCurrentScore] = useState(0)
+  const [showTelemetry, setShowTelemetry] = useState(true)
+
+  // Servo/Motor preview states
+  const [servoPositions, setServoPositions] = useState<{[key: string]: number}>({})
+  const [motorSpeeds, setMotorSpeeds] = useState<{[key: string]: number}>({})
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -306,15 +399,33 @@ export default function CurvesEditor() {
       waypoints.forEach((point, i) => {
         const x = (point.x / 144) * canvas.width
         const y = (point.y / 144) * canvas.height
+        const isHovered = hoverWaypointIndex === i
+        const isDragging = draggingWaypointIndex === i
+        const radius = isHovered || isDragging ? 7 : 5
+
+        // Outer glow for hover/drag
+        if (isHovered || isDragging) {
+          ctx.fillStyle = i === 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(59, 130, 246, 0.3)'
+          ctx.beginPath()
+          ctx.arc(x, y, radius + 3, 0, Math.PI * 2)
+          ctx.fill()
+        }
+
+        // Waypoint circle
         ctx.fillStyle = i === 0 ? '#10b981' : '#3b82f6'
         ctx.beginPath()
-        ctx.arc(x, y, 4, 0, Math.PI * 2)
+        ctx.arc(x, y, radius, 0, Math.PI * 2)
         ctx.fill()
+
+        // White border for better visibility
+        ctx.strokeStyle = '#fff'
+        ctx.lineWidth = 2
+        ctx.stroke()
 
         // Label waypoints
         ctx.fillStyle = '#fff'
         ctx.font = '10px bold monospace'
-        ctx.fillText(`${i}`, x + 8, y - 8)
+        ctx.fillText(`${i}`, x + 10, y - 10)
       })
 
       // Animated portion
@@ -369,7 +480,7 @@ export default function CurvesEditor() {
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves])
+  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves, hoverWaypointIndex, draggingWaypointIndex])
 
   useEffect(() => {
     drawField()
@@ -484,6 +595,67 @@ export default function CurvesEditor() {
     }
   }
 
+  // Helper function to find waypoint at position
+  const findWaypointAtPosition = (x: number, y: number, canvas: HTMLCanvasElement): number | null => {
+    const waypoints = getWaypoints()
+    const threshold = 12 // pixels
+
+    for (let i = waypoints.length - 1; i >= 0; i--) {
+      const wx = (waypoints[i].x / 144) * canvas.width
+      const wy = (waypoints[i].y / 144) * canvas.height
+      const canvasX = (x / 144) * canvas.width
+      const canvasY = (y / 144) * canvas.height
+      const distance = Math.sqrt(Math.pow(canvasX - wx, 2) + Math.pow(canvasY - wy, 2))
+
+      if (distance < threshold) {
+        return i
+      }
+    }
+    return null
+  }
+
+  // Update waypoint position by index
+  const updateWaypointPosition = (index: number, x: number, y: number) => {
+    if (index === 0) {
+      // Update robot start position
+      setRobotX(x)
+      setRobotY(y)
+    } else {
+      // Update action block
+      const actionIndex = index - 1
+      if (actionIndex < actions.length) {
+        const action = actions[actionIndex]
+        if (action.type === 'moveToPosition' || action.type === 'splineTo') {
+          updateAction(action.id, { targetX: x, targetY: y })
+        }
+      }
+    }
+  }
+
+  // Delete waypoint by index
+  const deleteWaypoint = (index: number) => {
+    if (index === 0) return // Can't delete start position
+
+    const actionIndex = index - 1
+    if (actionIndex < actions.length) {
+      deleteAction(actions[actionIndex].id)
+    }
+  }
+
+  // Add waypoint at position
+  const addWaypointAtPosition = (x: number, y: number) => {
+    const newAction: ActionBlock = {
+      id: Date.now().toString(),
+      type: 'moveToPosition',
+      label: 'Move to Position',
+      targetX: x,
+      targetY: y,
+      targetHeading: robotHeading,
+      curveType: useCurves ? 'spline' : 'linear',
+    }
+    setActions([...actions, newAction])
+  }
+
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -492,15 +664,44 @@ export default function CurvesEditor() {
     const x = ((e.clientX - rect.left) / rect.width) * 144
     const y = ((e.clientY - rect.top) / rect.height) * 144
 
+    // Drawing mode - start drawing
+    if (isDrawingMode) {
+      setIsDrawing(true)
+      setLastDrawnPoint({ x, y })
+      addWaypointAtPosition(x, y)
+      return
+    }
+
+    // Check if clicking on a waypoint
+    const waypointIndex = findWaypointAtPosition(x, y, canvas)
+
+    if (waypointIndex !== null) {
+      if (e.button === 2) {
+        // Right-click to delete
+        e.preventDefault()
+        deleteWaypoint(waypointIndex)
+        return
+      }
+      // Left-click to drag
+      setDraggingWaypointIndex(waypointIndex)
+      return
+    }
+
+    // Check if clicking on robot (for backward compatibility)
     const distance = Math.sqrt(Math.pow(x - robotX, 2) + Math.pow(y - robotY, 2))
     if (distance < 15) {
       setIsDraggingRobot(true)
+      return
+    }
+
+    // Shift+click or Ctrl+click to add waypoint
+    if (e.shiftKey || e.ctrlKey) {
+      addWaypointAtPosition(x, y)
+      setIsAddingWaypoint(true)
     }
   }
 
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDraggingRobot) return
-
     const canvas = canvasRef.current
     if (!canvas) return
 
@@ -508,12 +709,64 @@ export default function CurvesEditor() {
     const x = Math.max(9, Math.min(135, ((e.clientX - rect.left) / rect.width) * 144))
     const y = Math.max(9, Math.min(135, ((e.clientY - rect.top) / rect.height) * 144))
 
-    setRobotX(x)
-    setRobotY(y)
+    // Drawing mode - continuously add waypoints
+    if (isDrawing && lastDrawnPoint) {
+      const distance = Math.sqrt(Math.pow(x - lastDrawnPoint.x, 2) + Math.pow(y - lastDrawnPoint.y, 2))
+      // Add waypoint every 10 inches of distance
+      if (distance > 10) {
+        addWaypointAtPosition(x, y)
+        setLastDrawnPoint({ x, y })
+      }
+      return
+    }
+
+    // Update hover state (only when not dragging)
+    if (!draggingWaypointIndex && !isDraggingRobot) {
+      const waypointIndex = findWaypointAtPosition(x, y, canvas)
+      setHoverWaypointIndex(waypointIndex)
+    }
+
+    // Handle dragging
+    if (draggingWaypointIndex !== null) {
+      updateWaypointPosition(draggingWaypointIndex, x, y)
+      return
+    }
+
+    if (isDraggingRobot) {
+      setRobotX(x)
+      setRobotY(y)
+      return
+    }
   }
 
   const handleCanvasMouseUp = () => {
     setIsDraggingRobot(false)
+    setDraggingWaypointIndex(null)
+    setIsAddingWaypoint(false)
+    setIsDrawing(false)
+    setLastDrawnPoint(null)
+  }
+
+  const handleCanvasContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault() // Prevent default context menu
+  }
+
+  const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isDrawingMode) return // Don't add on double-click in drawing mode
+
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const rect = canvas.getBoundingClientRect()
+    const x = ((e.clientX - rect.left) / rect.width) * 144
+    const y = ((e.clientY - rect.top) / rect.height) * 144
+
+    // Check if double-clicking on a waypoint (to avoid adding duplicate)
+    const waypointIndex = findWaypointAtPosition(x, y, canvas)
+    if (waypointIndex !== null) return
+
+    // Add waypoint at double-click position
+    addWaypointAtPosition(x, y)
   }
 
   const loadGuestProject = () => {
@@ -609,19 +862,81 @@ export default function CurvesEditor() {
       targetY: robotY,
       targetHeading: robotHeading,
       curveType: 'linear',
+      score: 0,
     }
-    setActions([...actions, newAction])
+    const newActions = [...actions, newAction]
+    saveToHistory(newActions)
+    setActions(newActions)
+  }
+
+  const saveToHistory = (newActions: ActionBlock[]) => {
+    const newHistory = actionHistory.slice(0, historyIndex + 1)
+    newHistory.push(newActions)
+    setActionHistory(newHistory)
+    setHistoryIndex(newHistory.length - 1)
+  }
+
+  const undo = () => {
+    if (historyIndex > 0) {
+      setHistoryIndex(historyIndex - 1)
+      setActions(actionHistory[historyIndex - 1])
+    }
+  }
+
+  const redo = () => {
+    if (historyIndex < actionHistory.length - 1) {
+      setHistoryIndex(historyIndex + 1)
+      setActions(actionHistory[historyIndex + 1])
+    }
+  }
+
+  const cloneAction = (action: ActionBlock) => {
+    const cloned: ActionBlock = {
+      ...action,
+      id: Date.now().toString(),
+    }
+    const newActions = [...actions, cloned]
+    saveToHistory(newActions)
+    setActions(newActions)
   }
 
   const deleteAction = (id: string) => {
-    setActions(actions.filter(a => a.id !== id))
+    const newActions = actions.filter(a => a.id !== id)
+    saveToHistory(newActions)
+    setActions(newActions)
     if (selectedAction?.id === id) setSelectedAction(null)
   }
 
   const updateAction = (id: string, updates: Partial<ActionBlock>) => {
-    setActions(actions.map(a => a.id === id ? { ...a, ...updates } : a))
+    const newActions = actions.map(a => a.id === id ? { ...a, ...updates } : a)
+    setActions(newActions)
     if (selectedAction?.id === id) {
       setSelectedAction({ ...selectedAction, ...updates })
+    }
+  }
+
+  // Calculate telemetry data
+  const calculateTelemetry = (): TelemetryData => {
+    const waypoints = getWaypoints()
+    let totalDistance = 0
+
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const dx = waypoints[i + 1].x - waypoints[i].x
+      const dy = waypoints[i + 1].y - waypoints[i].y
+      totalDistance += Math.sqrt(dx * dx + dy * dy)
+    }
+
+    const averageSpeed = 24 // inches per second (typical robot speed)
+    const estimatedTime = totalDistance / averageSpeed
+
+    const totalScore = actions.reduce((sum, action) => sum + (action.score || 0), 0)
+
+    return {
+      totalDistance,
+      estimatedTime,
+      averageSpeed,
+      currentScore: totalScore,
+      actionCount: actions.length,
     }
   }
 
@@ -821,6 +1136,14 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
       <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-2 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
           <h1 className="text-base font-bold text-white">{project.name}</h1>
+
+          {/* Score Display */}
+          <div className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-yellow-600/20 to-orange-600/20 border border-yellow-600/30 rounded">
+            <Trophy className="h-4 w-4 text-yellow-500" />
+            <span className="text-sm font-bold text-yellow-400">{calculateTelemetry().currentScore}</span>
+            <span className="text-xs text-yellow-600">pts</span>
+          </div>
+
           <div className="flex items-center gap-1">
             {!isAnimating ? (
               <Button onClick={startAnimation} size="sm" variant="default" disabled={actions.length === 0}>
@@ -841,9 +1164,27 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
               <Ruler className="h-4 w-4 mr-2" />
               {showRuler ? 'Hide' : 'Show'} Ruler
             </Button>
+            <Button
+              onClick={() => setIsDrawingMode(!isDrawingMode)}
+              size="sm"
+              variant={isDrawingMode ? 'default' : 'ghost'}
+            >
+              <Pencil className="h-4 w-4 mr-2" />
+              {isDrawingMode ? 'Exit Draw' : 'Draw Mode'}
+            </Button>
+            <Button onClick={undo} disabled={historyIndex <= 0} size="sm" variant="ghost">
+              <Undo2 className="h-4 w-4" />
+            </Button>
+            <Button onClick={redo} disabled={historyIndex >= actionHistory.length - 1} size="sm" variant="ghost">
+              <Redo2 className="h-4 w-4" />
+            </Button>
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <Button onClick={() => setShowTelemetry(!showTelemetry)} size="sm" variant="ghost">
+            <Activity className="h-4 w-4 mr-2" />
+            {showTelemetry ? 'Hide' : 'Show'} Stats
+          </Button>
           <div className="flex items-center gap-2">
             <Label className="text-xs text-zinc-400">Curves</Label>
             <Switch checked={useCurves} onCheckedChange={setUseCurves} />
@@ -892,13 +1233,21 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
             </TabsList>
 
             <TabsContent value="blocks" className="flex-1 flex flex-col m-0">
+              {/* Block Search */}
               <div className="p-3 border-b border-zinc-800">
-                <div className="flex gap-1">
+                <Input
+                  type="text"
+                  placeholder="Search blocks..."
+                  value={blockSearchQuery}
+                  onChange={(e) => setBlockSearchQuery(e.target.value)}
+                  className="h-8 text-xs bg-zinc-800 border-zinc-700 mb-2"
+                />
+                <div className="grid grid-cols-2 gap-1">
                   <Button
                     size="sm"
                     variant={activeTab === 'movement' ? 'default' : 'ghost'}
                     onClick={() => setActiveTab('movement')}
-                    className="flex-1 text-xs"
+                    className="text-xs"
                   >
                     Move
                   </Button>
@@ -906,15 +1255,23 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                     size="sm"
                     variant={activeTab === 'mechanisms' ? 'default' : 'ghost'}
                     onClick={() => setActiveTab('mechanisms')}
-                    className="flex-1 text-xs"
+                    className="text-xs"
                   >
                     Mech
                   </Button>
                   <Button
                     size="sm"
+                    variant={activeTab === 'sensors' ? 'default' : 'ghost'}
+                    onClick={() => setActiveTab('sensors')}
+                    className="text-xs"
+                  >
+                    Sensors
+                  </Button>
+                  <Button
+                    size="sm"
                     variant={activeTab === 'control' ? 'default' : 'ghost'}
                     onClick={() => setActiveTab('control')}
-                    className="flex-1 text-xs"
+                    className="text-xs"
                   >
                     Control
                   </Button>
@@ -922,29 +1279,72 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
               </div>
               <ScrollArea className="flex-1 p-3">
                 <div className="space-y-1.5">
-                  {BLOCK_TYPES[activeTab].map((block) => {
-                    const Icon = block.icon
-                    return (
-                      <Button
-                        key={block.id}
-                        onClick={() => addAction(block)}
-                        variant="outline"
-                        size="sm"
-                        className="w-full justify-start text-xs h-9 hover:bg-blue-500/10 hover:border-blue-500"
-                      >
-                        <Icon className="h-3.5 w-3.5 mr-2" />
-                        {block.label}
-                      </Button>
+                  {BLOCK_TYPES[activeTab]
+                    .filter(block =>
+                      blockSearchQuery === '' ||
+                      block.label.toLowerCase().includes(blockSearchQuery.toLowerCase()) ||
+                      block.description.toLowerCase().includes(blockSearchQuery.toLowerCase())
                     )
-                  })}
+                    .map((block) => {
+                      const Icon = block.icon
+                      return (
+                        <div key={block.id} className="group">
+                          <Button
+                            onClick={() => addAction(block)}
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-start text-xs h-auto py-2 hover:bg-blue-500/10 hover:border-blue-500"
+                          >
+                            <Icon className="h-3.5 w-3.5 mr-2 flex-shrink-0" />
+                            <div className="flex flex-col items-start flex-1 min-w-0">
+                              <div className="font-medium">{block.label}</div>
+                              <div className="text-[10px] text-zinc-500 truncate w-full group-hover:text-zinc-400">
+                                {block.description}
+                              </div>
+                            </div>
+                          </Button>
+                        </div>
+                      )
+                    })}
+                  {BLOCK_TYPES[activeTab].filter(block =>
+                    blockSearchQuery === '' ||
+                    block.label.toLowerCase().includes(blockSearchQuery.toLowerCase()) ||
+                    block.description.toLowerCase().includes(blockSearchQuery.toLowerCase())
+                  ).length === 0 && (
+                    <div className="text-center text-xs text-zinc-500 py-4">
+                      No blocks found
+                    </div>
+                  )}
                 </div>
               </ScrollArea>
             </TabsContent>
 
             <TabsContent value="hardware" className="flex-1 m-0 p-3 overflow-auto">
               <div className="space-y-4">
+                {/* Expansion Hub Toggle */}
+                <div className="p-3 bg-zinc-800/50 rounded border border-zinc-700">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <span className="text-xs font-semibold text-white">Expansion Hub</span>
+                    <Switch checked={hasExpansionHub} onCheckedChange={setHasExpansionHub} />
+                  </label>
+                  <div className="text-[10px] text-zinc-500 mt-1">
+                    Enable second hub for additional ports
+                  </div>
+                </div>
+
+                {/* Drive Motors */}
                 <div>
-                  <h3 className="text-xs font-bold text-white mb-2">Drive Motors</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-bold text-white">Drive Motors</h3>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setMotors([...motors, { name: `motor${motors.length}`, port: motors.length, reversed: false, hub: 'control' }])}
+                      className="h-6 text-[10px] px-2"
+                    >
+                      + Add
+                    </Button>
+                  </div>
                   <div className="space-y-2">
                     {motors.map((motor, i) => (
                       <div key={i} className="p-2 bg-zinc-800 rounded border border-zinc-700">
@@ -957,29 +1357,58 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                           }}
                           className="h-7 text-xs bg-zinc-900 mb-1"
                         />
-                        <div className="flex items-center justify-between text-xs text-zinc-400">
+                        <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
                           <span>Port {motor.port}</span>
-                          <label className="flex items-center gap-1 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={motor.reversed}
-                              onChange={(e) => {
+                          {hasExpansionHub && (
+                            <Select
+                              value={motor.hub || 'control'}
+                              onValueChange={(v: 'control' | 'expansion') => {
                                 const newMotors = [...motors]
-                                newMotors[i].reversed = e.target.checked
+                                newMotors[i].hub = v
                                 setMotors(newMotors)
                               }}
-                              className="w-3 h-3"
-                            />
-                            Reversed
-                          </label>
+                            >
+                              <SelectTrigger className="h-6 w-24 text-[10px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="control">Control</SelectItem>
+                                <SelectItem value="expansion">Expansion</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
                         </div>
+                        <label className="flex items-center gap-1 cursor-pointer text-xs text-zinc-400">
+                          <input
+                            type="checkbox"
+                            checked={motor.reversed}
+                            onChange={(e) => {
+                              const newMotors = [...motors]
+                              newMotors[i].reversed = e.target.checked
+                              setMotors(newMotors)
+                            }}
+                            className="w-3 h-3"
+                          />
+                          Reversed
+                        </label>
                       </div>
                     ))}
                   </div>
                 </div>
 
+                {/* Servos */}
                 <div>
-                  <h3 className="text-xs font-bold text-white mb-2">Servos</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-bold text-white">Servos</h3>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setServos([...servos, { name: `servo${servos.length}`, port: servos.length, hub: 'control', type: 'standard' }])}
+                      className="h-6 text-[10px] px-2"
+                    >
+                      + Add
+                    </Button>
+                  </div>
                   <div className="space-y-2">
                     {servos.map((servo, i) => (
                       <div key={i} className="p-2 bg-zinc-800 rounded border border-zinc-700">
@@ -992,7 +1421,233 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                           }}
                           className="h-7 text-xs bg-zinc-900 mb-1"
                         />
-                        <div className="text-xs text-zinc-400">Port {servo.port}</div>
+                        <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
+                          <span>Port {servo.port}</span>
+                          <Select
+                            value={servo.type || 'standard'}
+                            onValueChange={(v: 'standard' | 'continuous') => {
+                              const newServos = [...servos]
+                              newServos[i].type = v
+                              setServos(newServos)
+                            }}
+                          >
+                            <SelectTrigger className="h-6 w-24 text-[10px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="standard">Standard</SelectItem>
+                              <SelectItem value="continuous">Continuous</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {hasExpansionHub && (
+                          <Select
+                            value={servo.hub || 'control'}
+                            onValueChange={(v: 'control' | 'expansion') => {
+                              const newServos = [...servos]
+                              newServos[i].hub = v
+                              setServos(newServos)
+                            }}
+                          >
+                            <SelectTrigger className="h-6 w-full text-[10px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="control">Control Hub</SelectItem>
+                              <SelectItem value="expansion">Expansion Hub</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* I2C Devices */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-bold text-white">I2C Devices</h3>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setI2cDevices([...i2cDevices, { name: 'sensor', type: 'distance', address: '0x00', port: 0 }])}
+                      className="h-6 text-[10px] px-2"
+                    >
+                      + Add
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {i2cDevices.map((device, i) => (
+                      <div key={i} className="p-2 bg-zinc-800 rounded border border-zinc-700">
+                        <Input
+                          value={device.name}
+                          onChange={(e) => {
+                            const newDevices = [...i2cDevices]
+                            newDevices[i].name = e.target.value
+                            setI2cDevices(newDevices)
+                          }}
+                          className="h-7 text-xs bg-zinc-900 mb-1"
+                        />
+                        <Select
+                          value={device.type}
+                          onValueChange={(v: 'imu' | 'distance' | 'color' | 'servo-controller') => {
+                            const newDevices = [...i2cDevices]
+                            newDevices[i].type = v
+                            setI2cDevices(newDevices)
+                          }}
+                        >
+                          <SelectTrigger className="h-6 w-full text-[10px] mb-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="imu">IMU (BNO055)</SelectItem>
+                            <SelectItem value="distance">Distance Sensor</SelectItem>
+                            <SelectItem value="color">Color Sensor</SelectItem>
+                            <SelectItem value="servo-controller">Servo Controller</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <div className="flex gap-1">
+                          <Input
+                            value={device.address}
+                            onChange={(e) => {
+                              const newDevices = [...i2cDevices]
+                              newDevices[i].address = e.target.value
+                              setI2cDevices(newDevices)
+                            }}
+                            placeholder="Address"
+                            className="h-6 text-[10px] bg-zinc-900"
+                          />
+                          <Input
+                            type="number"
+                            value={device.port}
+                            onChange={(e) => {
+                              const newDevices = [...i2cDevices]
+                              newDevices[i].port = parseInt(e.target.value)
+                              setI2cDevices(newDevices)
+                            }}
+                            placeholder="Port"
+                            className="h-6 text-[10px] bg-zinc-900 w-16"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Digital Devices */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-bold text-white">Digital Sensors</h3>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setDigitalDevices([...digitalDevices, { name: 'touchSensor', type: 'touch', port: 0 }])}
+                      className="h-6 text-[10px] px-2"
+                    >
+                      + Add
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {digitalDevices.map((device, i) => (
+                      <div key={i} className="p-2 bg-zinc-800 rounded border border-zinc-700">
+                        <Input
+                          value={device.name}
+                          onChange={(e) => {
+                            const newDevices = [...digitalDevices]
+                            newDevices[i].name = e.target.value
+                            setDigitalDevices(newDevices)
+                          }}
+                          className="h-7 text-xs bg-zinc-900 mb-1"
+                        />
+                        <div className="flex gap-1">
+                          <Select
+                            value={device.type}
+                            onValueChange={(v: 'touch' | 'limit-switch' | 'magnetic') => {
+                              const newDevices = [...digitalDevices]
+                              newDevices[i].type = v
+                              setDigitalDevices(newDevices)
+                            }}
+                          >
+                            <SelectTrigger className="h-6 flex-1 text-[10px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="touch">Touch Sensor</SelectItem>
+                              <SelectItem value="limit-switch">Limit Switch</SelectItem>
+                              <SelectItem value="magnetic">Magnetic Sensor</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            type="number"
+                            value={device.port}
+                            onChange={(e) => {
+                              const newDevices = [...digitalDevices]
+                              newDevices[i].port = parseInt(e.target.value)
+                              setDigitalDevices(newDevices)
+                            }}
+                            placeholder="Port"
+                            className="h-6 text-[10px] bg-zinc-900 w-16"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Analog Devices */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-bold text-white">Analog Sensors</h3>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setAnalogDevices([...analogDevices, { name: 'potentiometer', type: 'potentiometer', port: 0 }])}
+                      className="h-6 text-[10px] px-2"
+                    >
+                      + Add
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {analogDevices.map((device, i) => (
+                      <div key={i} className="p-2 bg-zinc-800 rounded border border-zinc-700">
+                        <Input
+                          value={device.name}
+                          onChange={(e) => {
+                            const newDevices = [...analogDevices]
+                            newDevices[i].name = e.target.value
+                            setAnalogDevices(newDevices)
+                          }}
+                          className="h-7 text-xs bg-zinc-900 mb-1"
+                        />
+                        <div className="flex gap-1">
+                          <Select
+                            value={device.type}
+                            onValueChange={(v: 'potentiometer' | 'light-sensor') => {
+                              const newDevices = [...analogDevices]
+                              newDevices[i].type = v
+                              setAnalogDevices(newDevices)
+                            }}
+                          >
+                            <SelectTrigger className="h-6 flex-1 text-[10px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="potentiometer">Potentiometer</SelectItem>
+                              <SelectItem value="light-sensor">Light Sensor</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            type="number"
+                            value={device.port}
+                            onChange={(e) => {
+                              const newDevices = [...analogDevices]
+                              newDevices[i].port = parseInt(e.target.value)
+                              setAnalogDevices(newDevices)
+                            }}
+                            placeholder="Port"
+                            className="h-6 text-[10px] bg-zinc-900 w-16"
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1021,11 +1676,18 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                   onClick={() => setSelectedAction(action)}
                 >
                   <CardContent className="p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-1">
                       <div className="text-xs font-mono text-zinc-500 w-8">{index + 1}</div>
                       <ChevronRight className="h-4 w-4 text-zinc-600" />
-                      <div>
-                        <div className="font-medium text-sm text-white">{action.label}</div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium text-sm text-white">{action.label}</div>
+                          {action.score && action.score > 0 && (
+                            <div className="text-xs bg-yellow-600/20 text-yellow-400 px-1.5 py-0.5 rounded">
+                              +{action.score}
+                            </div>
+                          )}
+                        </div>
                         <div className="text-xs text-zinc-500">
                           {action.type === 'moveToPosition' || action.type === 'splineTo'
                             ? `to (${action.targetX?.toFixed(1)}, ${action.targetY?.toFixed(1)}) @ ${action.targetHeading?.toFixed(0)}°`
@@ -1041,14 +1703,26 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                         </div>
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={(e) => { e.stopPropagation(); deleteAction(action.id); }}
-                      className="h-8 w-8 p-0"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-zinc-500 hover:text-red-500" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => { e.stopPropagation(); cloneAction(action); }}
+                        className="h-8 w-8 p-0"
+                        title="Duplicate"
+                      >
+                        <Copy className="h-3.5 w-3.5 text-zinc-500 hover:text-blue-500" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={(e) => { e.stopPropagation(); deleteAction(action.id); }}
+                        className="h-8 w-8 p-0"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-zinc-500 hover:text-red-500" />
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -1058,10 +1732,86 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
 
         {/* Right: Config + Preview */}
         <div className="w-96 border-l border-zinc-800 flex flex-col bg-zinc-900">
+          {/* Telemetry Panel */}
+          {showTelemetry && (
+            <div className="border-b border-zinc-800 p-4 bg-zinc-900/50">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold text-white">Telemetry</h3>
+                <TrendingUp className="h-4 w-4 text-blue-400" />
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2 bg-zinc-800 rounded">
+                  <div className="text-zinc-500">Distance</div>
+                  <div className="font-mono text-white">{calculateTelemetry().totalDistance.toFixed(1)}"</div>
+                </div>
+                <div className="p-2 bg-zinc-800 rounded">
+                  <div className="text-zinc-500">Est. Time</div>
+                  <div className="font-mono text-white">{calculateTelemetry().estimatedTime.toFixed(1)}s</div>
+                </div>
+                <div className="p-2 bg-zinc-800 rounded">
+                  <div className="text-zinc-500">Actions</div>
+                  <div className="font-mono text-white">{calculateTelemetry().actionCount}</div>
+                </div>
+                <div className="p-2 bg-zinc-800 rounded">
+                  <div className="text-zinc-500">Avg Speed</div>
+                  <div className="font-mono text-white">{calculateTelemetry().averageSpeed}"/s</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Servo/Motor Preview */}
+          <div className="border-b border-zinc-800 p-4 bg-zinc-900/50">
+            <h3 className="text-sm font-bold text-white mb-2">Hardware Status</h3>
+            <div className="space-y-2">
+              {servos.slice(0, 3).map((servo, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="text-xs text-zinc-400 w-16 truncate">{servo.name}</div>
+                  <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 transition-all duration-300"
+                      style={{ width: `${(servoPositions[servo.name] || 0.5) * 100}%` }}
+                    />
+                  </div>
+                  <div className="text-xs font-mono text-zinc-500 w-10">
+                    {((servoPositions[servo.name] || 0.5) * 100).toFixed(0)}%
+                  </div>
+                </div>
+              ))}
+              {motors.slice(0, 4).map((motor, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="text-xs text-zinc-400 w-16 truncate">{motor.name}</div>
+                  <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-green-500 transition-all duration-300"
+                      style={{ width: `${Math.abs(motorSpeeds[motor.name] || 0) * 100}%` }}
+                    />
+                  </div>
+                  <div className="text-xs font-mono text-zinc-500 w-10">
+                    {((motorSpeeds[motor.name] || 0) * 100).toFixed(0)}%
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {selectedAction && (
             <div className="border-b border-zinc-800 p-4 max-h-64 overflow-auto">
               <h3 className="text-sm font-bold text-white mb-3">Configure: {selectedAction.label}</h3>
               <div className="space-y-3">
+                {/* Score Configuration */}
+                {(selectedAction.type === 'moveToPosition' || selectedAction.type === 'custom') && (
+                  <div>
+                    <Label className="text-xs text-zinc-400">Score Points</Label>
+                    <Input
+                      type="number"
+                      value={selectedAction.score || 0}
+                      onChange={(e) => updateAction(selectedAction.id, { score: parseInt(e.target.value) || 0 })}
+                      className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
+                    />
+                  </div>
+                )}
+
                 {(selectedAction.type === 'moveToPosition' || selectedAction.type === 'splineTo') && (
                   <>
                     <div>
@@ -1164,6 +1914,97 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                     <div className="text-xs text-zinc-500 mt-1">{((selectedAction.position || 0.5) * 100).toFixed(0)}%</div>
                   </div>
                 )}
+                {(selectedAction.type === 'setServo' || selectedAction.type.startsWith('servo') || selectedAction.type === 'continuousServo') && (
+                  <>
+                    <div>
+                      <Label className="text-xs text-zinc-400">Select Servo</Label>
+                      <Select
+                        value={selectedAction.servoName || servos[0]?.name}
+                        onValueChange={(v) => updateAction(selectedAction.id, { servoName: v })}
+                      >
+                        <SelectTrigger className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {servos.map((servo) => (
+                            <SelectItem key={servo.name} value={servo.name}>{servo.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-zinc-400">Position</Label>
+                      <Slider
+                        value={[selectedAction.position || 0.5]}
+                        onValueChange={([v]) => {
+                          updateAction(selectedAction.id, { position: v })
+                          setServoPositions({ ...servoPositions, [selectedAction.servoName || servos[0]?.name]: v })
+                        }}
+                        max={1}
+                        step={0.01}
+                        className="mt-2"
+                      />
+                      <div className="text-xs text-zinc-500 mt-1">{((selectedAction.position || 0.5) * 100).toFixed(0)}%</div>
+                    </div>
+                  </>
+                )}
+                {(selectedAction.type === 'runMotor' || selectedAction.type === 'setMotorPower') && (
+                  <>
+                    <div>
+                      <Label className="text-xs text-zinc-400">Select Motor</Label>
+                      <Select
+                        value={selectedAction.motorName || motors[4]?.name}
+                        onValueChange={(v) => updateAction(selectedAction.id, { motorName: v })}
+                      >
+                        <SelectTrigger className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {motors.slice(4).map((motor) => (
+                            <SelectItem key={motor.name} value={motor.name}>{motor.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-zinc-400">Power</Label>
+                      <Slider
+                        value={[selectedAction.power || 0.5]}
+                        onValueChange={([v]) => {
+                          updateAction(selectedAction.id, { power: v })
+                          setMotorSpeeds({ ...motorSpeeds, [selectedAction.motorName || motors[0]?.name]: v })
+                        }}
+                        max={1}
+                        step={0.1}
+                        className="mt-2"
+                      />
+                      <div className="text-xs text-zinc-500 mt-1">{((selectedAction.power || 0.5) * 100).toFixed(0)}%</div>
+                    </div>
+                  </>
+                )}
+                {(selectedAction.type === 'loop') && (
+                  <div>
+                    <Label className="text-xs text-zinc-400">Loop Count</Label>
+                    <Input
+                      type="number"
+                      value={selectedAction.loopCount || 1}
+                      onChange={(e) => updateAction(selectedAction.id, { loopCount: parseInt(e.target.value) || 1 })}
+                      className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
+                    />
+                  </div>
+                )}
+                {(selectedAction.type === 'waitUntil' || selectedAction.type === 'waitForSensor' || selectedAction.type === 'if') && (
+                  <div>
+                    <Label className="text-xs text-zinc-400">Condition</Label>
+                    <Input
+                      type="text"
+                      value={selectedAction.condition || ''}
+                      onChange={(e) => updateAction(selectedAction.id, { condition: e.target.value })}
+                      placeholder="e.g., sensor > 10"
+                      className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
+                    />
+                  </div>
+                )}
                 {selectedAction.type === 'custom' && (
                   <div>
                     <Label className="text-xs text-zinc-400">Java Code</Label>
@@ -1187,16 +2028,44 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                 {useCurves ? 'Smooth Curves' : 'Linear'}
               </div>
             </div>
-            <div className="aspect-square bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden cursor-move">
+
+            {/* Instructions */}
+            <div className="mb-3 p-2 bg-zinc-800/50 rounded border border-zinc-700/50 text-xs text-zinc-400">
+              <div className="font-semibold text-zinc-300 mb-1">Interactive Controls:</div>
+              <div className="space-y-0.5">
+                {isDrawingMode ? (
+                  <>
+                    <div className="text-blue-300">• <span className="font-semibold">Draw Mode Active</span></div>
+                    <div>• <span className="text-green-400">Click & Drag</span>: Draw path</div>
+                  </>
+                ) : (
+                  <>
+                    <div>• <span className="text-blue-400">Double-Click</span>: Add waypoint</div>
+                    <div>• <span className="text-green-400">Drag waypoint</span>: Move</div>
+                    <div>• <span className="text-red-400">Right-Click</span>: Delete</div>
+                    <div>• <span className="text-purple-400">Shift+Click</span>: Quick add</div>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="aspect-square bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden">
               <canvas
                 ref={canvasRef}
                 width={400}
                 height={400}
                 className="w-full h-full"
+                style={{
+                  cursor: isDrawingMode ? 'crosshair' :
+                          hoverWaypointIndex !== null ? 'pointer' :
+                          draggingWaypointIndex !== null || isDraggingRobot ? 'grabbing' :
+                          'default'
+                }}
                 onMouseDown={handleCanvasMouseDown}
                 onMouseMove={handleCanvasMouseMove}
                 onMouseUp={handleCanvasMouseUp}
                 onMouseLeave={handleCanvasMouseUp}
+                onContextMenu={handleCanvasContextMenu}
+                onDoubleClick={handleCanvasDoubleClick}
               />
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
