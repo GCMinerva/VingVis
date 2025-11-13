@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
 import { Navbar } from "@/components/navbar"
+import { MathTools } from "@/components/math-tools"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -48,9 +49,8 @@ import {
   Undo2,
   Redo2,
   Copy,
-  Trophy,
-  Activity,
-  TrendingUp,
+  Grid3x3,
+  Compass,
 } from "lucide-react"
 
 type Project = {
@@ -81,14 +81,6 @@ type ActionBlock = {
   score?: number
   condition?: string
   loopCount?: number
-}
-
-type TelemetryData = {
-  totalDistance: number
-  estimatedTime: number
-  averageSpeed: number
-  currentScore: number
-  actionCount: number
 }
 
 type Motor = {
@@ -237,6 +229,10 @@ export default function CurvesEditor() {
   const [saving, setSaving] = useState(false)
   const [isGuest, setIsGuest] = useState(false)
   const [showRuler, setShowRuler] = useState(false)
+  const [showProtractor, setShowProtractor] = useState(false)
+  const [showGrid, setShowGrid] = useState(false)
+  const [gridSize, setGridSize] = useState(24)
+  const [protractorLockToRobot, setProtractorLockToRobot] = useState(false)
   const [activeTab, setActiveTab] = useState<'movement' | 'mechanisms' | 'sensors' | 'control'>('movement')
   const [pathMode, setPathMode] = useState<'roadrunner' | 'pedropathing' | 'simple'>('simple')
   const [blockSearchQuery, setBlockSearchQuery] = useState('')
@@ -255,10 +251,6 @@ export default function CurvesEditor() {
   const [isDraggingRobot, setIsDraggingRobot] = useState(false)
   const [path, setPath] = useState<{x: number, y: number, heading: number}[]>([])
 
-  // Waypoint dragging states
-  const [draggingWaypointIndex, setDraggingWaypointIndex] = useState<number | null>(null)
-  const [hoverWaypointIndex, setHoverWaypointIndex] = useState<number | null>(null)
-  const [isAddingWaypoint, setIsAddingWaypoint] = useState(false)
   const [isDrawingMode, setIsDrawingMode] = useState(false)
   const [isDrawing, setIsDrawing] = useState(false)
   const [lastDrawnPoint, setLastDrawnPoint] = useState<{ x: number; y: number } | null>(null)
@@ -284,10 +276,6 @@ export default function CurvesEditor() {
   // Undo/Redo
   const [actionHistory, setActionHistory] = useState<ActionBlock[][]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
-
-  // Score and telemetry
-  const [currentScore, setCurrentScore] = useState(0)
-  const [showTelemetry, setShowTelemetry] = useState(true)
 
   // Servo/Motor preview states
   const [servoPositions, setServoPositions] = useState<{[key: string]: number}>({})
@@ -395,40 +383,6 @@ export default function CurvesEditor() {
       ctx.stroke()
       ctx.globalAlpha = 1
 
-      // Waypoints
-      const waypoints = getWaypoints()
-      waypoints.forEach((point, i) => {
-        const x = (point.x / 144) * canvas.width
-        const y = (point.y / 144) * canvas.height
-        const isHovered = hoverWaypointIndex === i
-        const isDragging = draggingWaypointIndex === i
-        const radius = isHovered || isDragging ? 7 : 5
-
-        // Outer glow for hover/drag
-        if (isHovered || isDragging) {
-          ctx.fillStyle = i === 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(59, 130, 246, 0.3)'
-          ctx.beginPath()
-          ctx.arc(x, y, radius + 3, 0, Math.PI * 2)
-          ctx.fill()
-        }
-
-        // Waypoint circle
-        ctx.fillStyle = i === 0 ? '#10b981' : '#3b82f6'
-        ctx.beginPath()
-        ctx.arc(x, y, radius, 0, Math.PI * 2)
-        ctx.fill()
-
-        // White border for better visibility
-        ctx.strokeStyle = '#fff'
-        ctx.lineWidth = 2
-        ctx.stroke()
-
-        // Label waypoints
-        ctx.fillStyle = '#fff'
-        ctx.font = '10px bold monospace'
-        ctx.fillText(`${i}`, x + 10, y - 10)
-      })
-
       // Animated portion
       if (isAnimating && animationProgress > 0) {
         const numPoints = path.length
@@ -481,7 +435,7 @@ export default function CurvesEditor() {
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves, hoverWaypointIndex, draggingWaypointIndex])
+  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves])
 
   useEffect(() => {
     drawField()
@@ -596,67 +550,6 @@ export default function CurvesEditor() {
     }
   }
 
-  // Helper function to find waypoint at position
-  const findWaypointAtPosition = (x: number, y: number, canvas: HTMLCanvasElement): number | null => {
-    const waypoints = getWaypoints()
-    const threshold = 12 // pixels
-
-    for (let i = waypoints.length - 1; i >= 0; i--) {
-      const wx = (waypoints[i].x / 144) * canvas.width
-      const wy = (waypoints[i].y / 144) * canvas.height
-      const canvasX = (x / 144) * canvas.width
-      const canvasY = (y / 144) * canvas.height
-      const distance = Math.sqrt(Math.pow(canvasX - wx, 2) + Math.pow(canvasY - wy, 2))
-
-      if (distance < threshold) {
-        return i
-      }
-    }
-    return null
-  }
-
-  // Update waypoint position by index
-  const updateWaypointPosition = (index: number, x: number, y: number) => {
-    if (index === 0) {
-      // Update robot start position
-      setRobotX(x)
-      setRobotY(y)
-    } else {
-      // Update action block
-      const actionIndex = index - 1
-      if (actionIndex < actions.length) {
-        const action = actions[actionIndex]
-        if (action.type === 'moveToPosition' || action.type === 'splineTo') {
-          updateAction(action.id, { targetX: x, targetY: y })
-        }
-      }
-    }
-  }
-
-  // Delete waypoint by index
-  const deleteWaypoint = (index: number) => {
-    if (index === 0) return // Can't delete start position
-
-    const actionIndex = index - 1
-    if (actionIndex < actions.length) {
-      deleteAction(actions[actionIndex].id)
-    }
-  }
-
-  // Add waypoint at position
-  const addWaypointAtPosition = (x: number, y: number) => {
-    const newAction: ActionBlock = {
-      id: Date.now().toString(),
-      type: 'moveToPosition',
-      label: 'Move to Position',
-      targetX: x,
-      targetY: y,
-      targetHeading: robotHeading,
-      curveType: useCurves ? 'spline' : 'linear',
-    }
-    setActions([...actions, newAction])
-  }
-
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -665,40 +558,11 @@ export default function CurvesEditor() {
     const x = ((e.clientX - rect.left) / rect.width) * 144
     const y = ((e.clientY - rect.top) / rect.height) * 144
 
-    // Drawing mode - start drawing
-    if (isDrawingMode) {
-      setIsDrawing(true)
-      setLastDrawnPoint({ x, y })
-      addWaypointAtPosition(x, y)
-      return
-    }
-
-    // Check if clicking on a waypoint
-    const waypointIndex = findWaypointAtPosition(x, y, canvas)
-
-    if (waypointIndex !== null) {
-      if (e.button === 2) {
-        // Right-click to delete
-        e.preventDefault()
-        deleteWaypoint(waypointIndex)
-        return
-      }
-      // Left-click to drag
-      setDraggingWaypointIndex(waypointIndex)
-      return
-    }
-
-    // Check if clicking on robot (for backward compatibility)
+    // Check if clicking on robot
     const distance = Math.sqrt(Math.pow(x - robotX, 2) + Math.pow(y - robotY, 2))
     if (distance < 15) {
       setIsDraggingRobot(true)
       return
-    }
-
-    // Shift+click or Ctrl+click to add waypoint
-    if (e.shiftKey || e.ctrlKey) {
-      addWaypointAtPosition(x, y)
-      setIsAddingWaypoint(true)
     }
   }
 
@@ -710,29 +574,6 @@ export default function CurvesEditor() {
     const x = Math.max(9, Math.min(135, ((e.clientX - rect.left) / rect.width) * 144))
     const y = Math.max(9, Math.min(135, ((e.clientY - rect.top) / rect.height) * 144))
 
-    // Drawing mode - continuously add waypoints
-    if (isDrawing && lastDrawnPoint) {
-      const distance = Math.sqrt(Math.pow(x - lastDrawnPoint.x, 2) + Math.pow(y - lastDrawnPoint.y, 2))
-      // Add waypoint every 10 inches of distance
-      if (distance > 10) {
-        addWaypointAtPosition(x, y)
-        setLastDrawnPoint({ x, y })
-      }
-      return
-    }
-
-    // Update hover state (only when not dragging)
-    if (!draggingWaypointIndex && !isDraggingRobot) {
-      const waypointIndex = findWaypointAtPosition(x, y, canvas)
-      setHoverWaypointIndex(waypointIndex)
-    }
-
-    // Handle dragging
-    if (draggingWaypointIndex !== null) {
-      updateWaypointPosition(draggingWaypointIndex, x, y)
-      return
-    }
-
     if (isDraggingRobot) {
       setRobotX(x)
       setRobotY(y)
@@ -742,8 +583,6 @@ export default function CurvesEditor() {
 
   const handleCanvasMouseUp = () => {
     setIsDraggingRobot(false)
-    setDraggingWaypointIndex(null)
-    setIsAddingWaypoint(false)
     setIsDrawing(false)
     setLastDrawnPoint(null)
   }
@@ -753,21 +592,7 @@ export default function CurvesEditor() {
   }
 
   const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isDrawingMode) return // Don't add on double-click in drawing mode
-
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const rect = canvas.getBoundingClientRect()
-    const x = ((e.clientX - rect.left) / rect.width) * 144
-    const y = ((e.clientY - rect.top) / rect.height) * 144
-
-    // Check if double-clicking on a waypoint (to avoid adding duplicate)
-    const waypointIndex = findWaypointAtPosition(x, y, canvas)
-    if (waypointIndex !== null) return
-
-    // Add waypoint at double-click position
-    addWaypointAtPosition(x, y)
+    // Double-click functionality removed
   }
 
   const loadGuestProject = () => {
@@ -915,31 +740,6 @@ export default function CurvesEditor() {
     setActions(newActions)
     if (selectedAction?.id === id) {
       setSelectedAction({ ...selectedAction, ...updates })
-    }
-  }
-
-  // Calculate telemetry data
-  const calculateTelemetry = (): TelemetryData => {
-    const waypoints = getWaypoints()
-    let totalDistance = 0
-
-    for (let i = 0; i < waypoints.length - 1; i++) {
-      const dx = waypoints[i + 1].x - waypoints[i].x
-      const dy = waypoints[i + 1].y - waypoints[i].y
-      totalDistance += Math.sqrt(dx * dx + dy * dy)
-    }
-
-    const averageSpeed = 24 // inches per second (typical robot speed)
-    const estimatedTime = totalDistance / averageSpeed
-
-    const totalScore = actions.reduce((sum, action) => sum + (action.score || 0), 0)
-
-    return {
-      totalDistance,
-      estimatedTime,
-      averageSpeed,
-      currentScore: totalScore,
-      actionCount: actions.length,
     }
   }
 
@@ -1140,13 +940,6 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
         <div className="flex items-center gap-3">
           <h1 className="text-base font-bold text-white">{project.name}</h1>
 
-          {/* Score Display */}
-          <div className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-yellow-600/20 to-orange-600/20 border border-yellow-600/30 rounded">
-            <Trophy className="h-4 w-4 text-yellow-500" />
-            <span className="text-sm font-bold text-yellow-400">{calculateTelemetry().currentScore}</span>
-            <span className="text-xs text-yellow-600">pts</span>
-          </div>
-
           <div className="flex items-center gap-1">
             {!isAnimating ? (
               <Button onClick={startAnimation} size="sm" variant="default" disabled={actions.length === 0}>
@@ -1165,7 +958,15 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
             </Button>
             <Button onClick={() => setShowRuler(!showRuler)} size="sm" variant="ghost">
               <Ruler className="h-4 w-4 mr-2" />
-              {showRuler ? 'Hide' : 'Show'} Ruler
+              Ruler
+            </Button>
+            <Button onClick={() => setShowProtractor(!showProtractor)} size="sm" variant="ghost">
+              <Compass className="h-4 w-4 mr-2" />
+              Protractor
+            </Button>
+            <Button onClick={() => setShowGrid(!showGrid)} size="sm" variant="ghost">
+              <Grid3x3 className="h-4 w-4 mr-2" />
+              Grid
             </Button>
             <Button
               onClick={() => setIsDrawingMode(!isDrawingMode)}
@@ -1184,10 +985,6 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button onClick={() => setShowTelemetry(!showTelemetry)} size="sm" variant="ghost">
-            <Activity className="h-4 w-4 mr-2" />
-            {showTelemetry ? 'Hide' : 'Show'} Stats
-          </Button>
           <div className="flex items-center gap-2">
             <Label className="text-xs text-zinc-400">Curves</Label>
             <Switch checked={useCurves} onCheckedChange={setUseCurves} />
@@ -1735,34 +1532,6 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
 
         {/* Right: Config + Preview */}
         <div className="w-96 border-l border-zinc-800 flex flex-col bg-zinc-900">
-          {/* Telemetry Panel */}
-          {showTelemetry && (
-            <div className="border-b border-zinc-800 p-4 bg-zinc-900/50">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-bold text-white">Telemetry</h3>
-                <TrendingUp className="h-4 w-4 text-blue-400" />
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2 bg-zinc-800 rounded">
-                  <div className="text-zinc-500">Distance</div>
-                  <div className="font-mono text-white">{calculateTelemetry().totalDistance.toFixed(1)}"</div>
-                </div>
-                <div className="p-2 bg-zinc-800 rounded">
-                  <div className="text-zinc-500">Est. Time</div>
-                  <div className="font-mono text-white">{calculateTelemetry().estimatedTime.toFixed(1)}s</div>
-                </div>
-                <div className="p-2 bg-zinc-800 rounded">
-                  <div className="text-zinc-500">Actions</div>
-                  <div className="font-mono text-white">{calculateTelemetry().actionCount}</div>
-                </div>
-                <div className="p-2 bg-zinc-800 rounded">
-                  <div className="text-zinc-500">Avg Speed</div>
-                  <div className="font-mono text-white">{calculateTelemetry().averageSpeed}"/s</div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Servo/Motor Preview */}
           <div className="border-b border-zinc-800 p-4 bg-zinc-900/50">
             <h3 className="text-sm font-bold text-white mb-2">Hardware Status</h3>
@@ -2036,22 +1805,12 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
             <div className="mb-3 p-2 bg-zinc-800/50 rounded border border-zinc-700/50 text-xs text-zinc-400">
               <div className="font-semibold text-zinc-300 mb-1">Interactive Controls:</div>
               <div className="space-y-0.5">
-                {isDrawingMode ? (
-                  <>
-                    <div className="text-blue-300">• <span className="font-semibold">Draw Mode Active</span></div>
-                    <div>• <span className="text-green-400">Click & Drag</span>: Draw path</div>
-                  </>
-                ) : (
-                  <>
-                    <div>• <span className="text-blue-400">Double-Click</span>: Add waypoint</div>
-                    <div>• <span className="text-green-400">Drag waypoint</span>: Move</div>
-                    <div>• <span className="text-red-400">Right-Click</span>: Delete</div>
-                    <div>• <span className="text-purple-400">Shift+Click</span>: Quick add</div>
-                  </>
-                )}
+                <div>• <span className="text-green-400">Drag robot</span>: Move position</div>
+                <div>• <span className="text-blue-400">Ruler</span>: Measure distances</div>
+                <div>• <span className="text-purple-400">Grid</span>: Snap to grid</div>
               </div>
             </div>
-            <div className="aspect-square bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden">
+            <div className="aspect-square bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden relative">
               <canvas
                 ref={canvasRef}
                 width={400}
@@ -2059,8 +1818,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                 className="w-full h-full"
                 style={{
                   cursor: isDrawingMode ? 'crosshair' :
-                          hoverWaypointIndex !== null ? 'pointer' :
-                          draggingWaypointIndex !== null || isDraggingRobot ? 'grabbing' :
+                          isDraggingRobot ? 'grabbing' :
                           'default'
                 }}
                 onMouseDown={handleCanvasMouseDown}
@@ -2069,6 +1827,18 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                 onMouseLeave={handleCanvasMouseUp}
                 onContextMenu={handleCanvasContextMenu}
                 onDoubleClick={handleCanvasDoubleClick}
+              />
+              <MathTools
+                showRuler={showRuler}
+                showProtractor={showProtractor}
+                showGrid={showGrid}
+                gridSize={gridSize}
+                canvasRef={canvasRef}
+                robotPosition={{ x: robotX, y: robotY }}
+                robotHeading={robotHeading}
+                protractorLockToRobot={protractorLockToRobot}
+                onProtractorLockToggle={() => setProtractorLockToRobot(!protractorLockToRobot)}
+                fieldSize={144}
               />
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
@@ -2086,7 +1856,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
               </div>
             </div>
             <div className="mt-2 text-xs text-zinc-500 text-center">
-              Waypoints: {getWaypoints().length}
+              Actions: {actions.length}
             </div>
           </div>
         </div>
