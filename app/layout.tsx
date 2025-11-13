@@ -6,8 +6,28 @@ import { AuthProvider } from "@/lib/auth-context"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "VingVis",
+  title: "VingVis - FTC Robot Code Builder",
   description: "Design and deploy FTC autonomous paths with VingVis drag-and-drop robotics builder.",
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+    ],
+    apple: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+    ],
+  },
+  metadataBase: new URL('https://vingvis.com'),
+  openGraph: {
+    title: "VingVis - FTC Robot Code Builder",
+    description: "Design and deploy FTC autonomous paths with VingVis drag-and-drop robotics builder.",
+    images: ['/icon.svg'],
+  },
+  twitter: {
+    card: 'summary',
+    title: "VingVis - FTC Robot Code Builder",
+    description: "Design and deploy FTC autonomous paths with VingVis drag-and-drop robotics builder.",
+    images: ['/icon.svg'],
+  },
 }
 
 export default function RootLayout({

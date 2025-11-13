@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,8 +23,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Insert into waitlist table
-    const { data, error } = await supabase
+    // Insert into waitlist table using admin client to bypass RLS
+    const { data, error } = await supabaseAdmin
       .from('waitlist')
       .insert([
         {

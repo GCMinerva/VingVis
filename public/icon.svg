@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" fill="none">
+  <!-- Background circle -->
+  <circle cx="200" cy="200" r="200" fill="#000000"/>
+
+  <!-- Robot head with movement lines -->
+  <g transform="translate(200, 200)">
+    <!-- Movement/speed lines (left side) -->
+    <path d="M -140 -20 L -100 -20" stroke="#e78a53" stroke-width="8" stroke-linecap="round" opacity="0.6"/>
+    <path d="M -140 0 L -95 0" stroke="#e78a53" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
+    <path d="M -140 20 L -100 20" stroke="#e78a53" stroke-width="8" stroke-linecap="round" opacity="0.6"/>
+
+    <!-- Robot body -->
+    <rect x="-60" y="-60" width="120" height="120" rx="20" fill="#e78a53"/>
+
+    <!-- Robot eyes -->
+    <circle cx="-25" cy="-15" r="12" fill="#000000"/>
+    <circle cx="25" cy="-15" r="12" fill="#000000"/>
+
+    <!-- Robot eye highlights -->
+    <circle cx="-22" cy="-18" r="5" fill="#ffffff"/>
+    <circle cx="28" cy="-18" r="5" fill="#ffffff"/>
+
+    <!-- Robot smile/mouth -->
+    <path d="M -30 20 Q 0 35, 30 20" stroke="#000000" stroke-width="6" stroke-linecap="round" fill="none"/>
+
+    <!-- Robot antenna -->
+    <line x1="0" y1="-60" x2="0" y2="-80" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="0" cy="-85" r="8" fill="#ffffff"/>
+
+    <!-- Robot arms (simple) -->
+    <rect x="-75" y="-10" width="15" height="40" rx="7" fill="#f19f6e"/>
+    <rect x="60" y="-10" width="15" height="40" rx="7" fill="#f19f6e"/>
+  </g>
+</svg>
