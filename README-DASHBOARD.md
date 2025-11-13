@@ -8,8 +8,9 @@ A no-code/low-code visual programming platform for FTC/FRC robotics teams. Build
 - **Project Templates**: Pre-configured templates for 4 Omni-Wheel and 4 Mecanum-Wheel drivetrains
 - **Motor Configuration**: Custom motor naming (fl, fr, bl, br or custom names)
 - **Code Export**: Generate ready-to-use Java code for FTC Robot Controller
-- **User Authentication**: Secure signup/signin with FTC team information
-- **Project Management**: Create up to 3 projects per user
+- **Waitlist System**: Join the waitlist with your FTC team information
+- **Authentication Required**: Dashboard requires authentication (no guest mode)
+- **Project Management**: Create up to 3 projects per authenticated user
 - **Team Sharing**: Future support for share-in-team mode and subscriptions
 
 ## Setup Instructions
@@ -26,12 +27,15 @@ Run the SQL schema in your Supabase dashboard:
 
 ### 2. Environment Variables
 
-The `.env.local` file has been created with your Supabase credentials:
+Create a `.env.local` file in the root directory with your Supabase credentials:
 
-```
-NEXT_PUBLIC_SUPABASE_URL=https://csvmfltnjzdtfgdcmhjq.supabase.co
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://[your-project].supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
+
+**Note**: The `SUPABASE_SERVICE_ROLE_KEY` is required for the waitlist API to work properly. You can find it in your Supabase project settings under "API".
 
 ### 3. Install Dependencies
 
@@ -49,15 +53,19 @@ Visit `http://localhost:3000` to see the application.
 
 ## User Flow
 
-### 1. Sign Up
-- Navigate to `/signup`
-- Enter email, username, and password
-- Optionally add FTC Team Name and ID (enables future team sharing features)
-- Create account
+### 1. Waitlist Signup
+- Navigate to `/waitlist` (or `/login` or `/signin` - all redirect to waitlist)
+- Enter your FTC Team information:
+  - FTC Team Name
+  - FTC Team ID
+  - Gmail Address
+- Submit to join the waitlist
+- You'll receive a confirmation and be notified when access is granted
 
-### 2. Dashboard
-- Navigate to `/dashboard` after login
-- See all your projects (max 3)
+### 2. Dashboard (Requires Authentication)
+- Navigate to `/dashboard` (requires authentication)
+- If not authenticated, you'll be redirected to `/waitlist`
+- Once authenticated, see all your projects (max 3)
 - Create a new project by clicking the "Create New Project" card
 
 ### 3. Create Project
@@ -121,6 +129,13 @@ The visual editor generates FTC-compatible Java code:
 - **Animations**: Framer Motion
 
 ## Database Schema
+
+### Waitlist Table
+- `id`: UUID (primary key)
+- `ftc_team_name`: Text (required)
+- `ftc_team_id`: Text (required)
+- `email`: Text (unique, required)
+- `created_at`: Timestamp
 
 ### Users Table
 - `id`: UUID (primary key)

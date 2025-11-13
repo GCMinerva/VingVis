@@ -30,6 +30,15 @@ CREATE INDEX IF NOT EXISTS idx_projects_project_hash ON projects(project_hash);
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist (allows re-running the schema)
+DROP POLICY IF EXISTS "Users can view their own data" ON users;
+DROP POLICY IF EXISTS "Users can update their own data" ON users;
+DROP POLICY IF EXISTS "Users can insert their own data" ON users;
+DROP POLICY IF EXISTS "Users can view their own projects" ON projects;
+DROP POLICY IF EXISTS "Users can create their own projects" ON projects;
+DROP POLICY IF EXISTS "Users can update their own projects" ON projects;
+DROP POLICY IF EXISTS "Users can delete their own projects" ON projects;
+
 -- Users table policies
 CREATE POLICY "Users can view their own data"
   ON users FOR SELECT
@@ -69,6 +78,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Drop existing triggers if they exist
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
+DROP TRIGGER IF EXISTS update_projects_updated_at ON projects;
+
 -- Triggers for updated_at
 CREATE TRIGGER update_users_updated_at
   BEFORE UPDATE ON users
@@ -79,3 +92,32 @@ CREATE TRIGGER update_projects_updated_at
   BEFORE UPDATE ON projects
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
+
+-- Create waitlist table
+CREATE TABLE IF NOT EXISTS waitlist (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ftc_team_name TEXT NOT NULL,
+  ftc_team_id TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create index on email for faster lookups
+CREATE INDEX IF NOT EXISTS idx_waitlist_email ON waitlist(email);
+
+-- Enable Row Level Security on waitlist
+ALTER TABLE waitlist ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing waitlist policies if they exist
+DROP POLICY IF EXISTS "Anyone can insert into waitlist" ON waitlist;
+DROP POLICY IF EXISTS "Authenticated users can view waitlist" ON waitlist;
+
+-- Waitlist table policies - allow anyone to insert (for signup)
+CREATE POLICY "Anyone can insert into waitlist"
+  ON waitlist FOR INSERT
+  WITH CHECK (true);
+
+-- Only authenticated users can view waitlist (optional, for admin purposes)
+CREATE POLICY "Authenticated users can view waitlist"
+  ON waitlist FOR SELECT
+  USING (auth.role() = 'authenticated');
