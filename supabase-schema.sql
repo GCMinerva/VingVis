@@ -79,3 +79,28 @@ CREATE TRIGGER update_projects_updated_at
   BEFORE UPDATE ON projects
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
+
+-- Create waitlist table
+CREATE TABLE IF NOT EXISTS waitlist (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ftc_team_name TEXT NOT NULL,
+  ftc_team_id TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create index on email for faster lookups
+CREATE INDEX IF NOT EXISTS idx_waitlist_email ON waitlist(email);
+
+-- Enable Row Level Security on waitlist
+ALTER TABLE waitlist ENABLE ROW LEVEL SECURITY;
+
+-- Waitlist table policies - allow anyone to insert (for signup)
+CREATE POLICY "Anyone can insert into waitlist"
+  ON waitlist FOR INSERT
+  WITH CHECK (true);
+
+-- Only authenticated users can view waitlist (optional, for admin purposes)
+CREATE POLICY "Authenticated users can view waitlist"
+  ON waitlist FOR SELECT
+  USING (auth.role() = 'authenticated');

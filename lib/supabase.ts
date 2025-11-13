@@ -89,6 +89,29 @@ export type Database = {
           updated_at?: string
         }
       }
+      waitlist: {
+        Row: {
+          id: string
+          ftc_team_name: string
+          ftc_team_id: string
+          email: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          ftc_team_name: string
+          ftc_team_id: string
+          email: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          ftc_team_name?: string
+          ftc_team_id?: string
+          email?: string
+          created_at?: string
+        }
+      }
     }
   }
 }
