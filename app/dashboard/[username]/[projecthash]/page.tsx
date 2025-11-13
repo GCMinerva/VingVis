@@ -295,7 +295,8 @@ export default function CurvesEditor() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const guestMode = localStorage.getItem('guestMode') === 'true'
+      // Using sessionStorage instead of localStorage for better security
+      const guestMode = sessionStorage.getItem('guestMode') === 'true'
       setIsGuest(guestMode)
       if (!authLoading && !user && !guestMode) {
         router.push("/login")
@@ -772,7 +773,8 @@ export default function CurvesEditor() {
   const loadGuestProject = () => {
     try {
       setLoading(true)
-      const guestProjects = localStorage.getItem('guestProjects')
+      // Using sessionStorage instead of localStorage for better security
+      const guestProjects = sessionStorage.getItem('guestProjects')
       if (guestProjects) {
         const projects = JSON.parse(guestProjects)
         const foundProject = projects.find((p: any) => p.project_hash === params.projecthash)
@@ -823,7 +825,8 @@ export default function CurvesEditor() {
     try {
       setSaving(true)
       if (isGuest) {
-        const guestProjects = localStorage.getItem('guestProjects')
+        // Using sessionStorage instead of localStorage for better security
+        const guestProjects = sessionStorage.getItem('guestProjects')
         if (guestProjects) {
           const projects = JSON.parse(guestProjects)
           const updatedProjects = projects.map((p: any) => {
@@ -832,7 +835,7 @@ export default function CurvesEditor() {
             }
             return p
           })
-          localStorage.setItem('guestProjects', JSON.stringify(updatedProjects))
+          sessionStorage.setItem('guestProjects', JSON.stringify(updatedProjects))
         }
       } else {
         const { error } = await supabase

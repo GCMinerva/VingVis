@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { rateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
+  // Rate limiting: 3 password reset attempts per 10 minutes
+  const rateLimitResponse = rateLimit(request, { interval: 600000, maxRequests: 3 })
+  if (rateLimitResponse) return rateLimitResponse
+
   try {
     const { email } = await request.json()
 

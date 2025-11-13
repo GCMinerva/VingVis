@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase, supabaseAdmin } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-admin'
+import { rateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
+  // Rate limiting: 3 signup attempts per 5 minutes
+  const rateLimitResponse = rateLimit(request, { interval: 300000, maxRequests: 3 })
+  if (rateLimitResponse) return rateLimitResponse
+
   try {
     const { email, password, username, ftcTeamName, ftcTeamId } = await request.json()
 
