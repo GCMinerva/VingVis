@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-admin'
+import { rateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
+  // Rate limiting: 3 waitlist submissions per 10 minutes
+  const rateLimitResponse = rateLimit(request, { interval: 600000, maxRequests: 3 })
+  if (rateLimitResponse) return rateLimitResponse
+
   try {
     const body = await request.json()
     const { ftc_team_name, ftc_team_id, email } = body
