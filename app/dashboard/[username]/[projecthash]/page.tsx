@@ -519,40 +519,63 @@ function CurvesEditorInner() {
     let currentY = robotY
     let currentHeading = robotHeading
 
-    actions.forEach(action => {
-      if (action.type === 'moveToPosition' || action.type === 'splineTo') {
-        currentX = action.targetX || currentX
-        currentY = action.targetY || currentY
-        currentHeading = action.targetHeading !== undefined ? action.targetHeading : currentHeading
+    // Build ordered list of nodes by following edges from start
+    const orderedNodes: Node<BlockNodeData>[] = []
+    const visited = new Set<string>()
+
+    const traverseNodes = (nodeId: string) => {
+      if (visited.has(nodeId)) return
+      visited.add(nodeId)
+
+      const node = nodes.find(n => n.id === nodeId)
+      if (node && node.type === 'blockNode') {
+        orderedNodes.push(node)
+      }
+
+      // Find outgoing edges
+      const outgoingEdges = edges.filter(e => e.source === nodeId)
+      outgoingEdges.forEach(edge => traverseNodes(edge.target))
+    }
+
+    traverseNodes('start')
+
+    // Process each node in order
+    orderedNodes.forEach(node => {
+      const data = node.data
+
+      if (data.type === 'moveToPosition' || data.type === 'splineTo') {
+        currentX = data.targetX || currentX
+        currentY = data.targetY || currentY
+        currentHeading = data.targetHeading !== undefined ? data.targetHeading : currentHeading
         waypoints.push({x: currentX, y: currentY, heading: currentHeading})
-      } else if (action.type === 'forward') {
-        const distance = action.distance || 24
+      } else if (data.type === 'forward') {
+        const distance = data.distance || 24
         currentX += distance * Math.cos((currentHeading * Math.PI) / 180)
         currentY += distance * Math.sin((currentHeading * Math.PI) / 180)
         waypoints.push({x: currentX, y: currentY, heading: currentHeading})
-      } else if (action.type === 'backward') {
-        const distance = action.distance || 24
+      } else if (data.type === 'backward') {
+        const distance = data.distance || 24
         currentX -= distance * Math.cos((currentHeading * Math.PI) / 180)
         currentY -= distance * Math.sin((currentHeading * Math.PI) / 180)
         waypoints.push({x: currentX, y: currentY, heading: currentHeading})
-      } else if (action.type === 'strafeLeft') {
-        const distance = action.distance || 24
+      } else if (data.type === 'strafeLeft') {
+        const distance = data.distance || 24
         currentX += distance * Math.cos(((currentHeading - 90) * Math.PI) / 180)
         currentY += distance * Math.sin(((currentHeading - 90) * Math.PI) / 180)
         waypoints.push({x: currentX, y: currentY, heading: currentHeading})
-      } else if (action.type === 'strafeRight') {
-        const distance = action.distance || 24
+      } else if (data.type === 'strafeRight') {
+        const distance = data.distance || 24
         currentX += distance * Math.cos(((currentHeading + 90) * Math.PI) / 180)
         currentY += distance * Math.sin(((currentHeading + 90) * Math.PI) / 180)
         waypoints.push({x: currentX, y: currentY, heading: currentHeading})
-      } else if (action.type === 'turnLeft') {
-        currentHeading -= action.angle || 90
+      } else if (data.type === 'turnLeft') {
+        currentHeading -= data.angle || 90
         waypoints.push({x: currentX, y: currentY, heading: currentHeading})
-      } else if (action.type === 'turnRight') {
-        currentHeading += action.angle || 90
+      } else if (data.type === 'turnRight') {
+        currentHeading += data.angle || 90
         waypoints.push({x: currentX, y: currentY, heading: currentHeading})
-      } else if (action.type === 'turnToHeading') {
-        currentHeading = action.targetHeading || currentHeading
+      } else if (data.type === 'turnToHeading') {
+        currentHeading = data.targetHeading || currentHeading
         waypoints.push({x: currentX, y: currentY, heading: currentHeading})
       }
     })
@@ -1171,7 +1194,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
 
           <div className="flex items-center gap-1">
             {!isAnimating ? (
-              <Button onClick={startAnimation} size="sm" variant="default" disabled={actions.length === 0}>
+              <Button onClick={startAnimation} size="sm" variant="default" disabled={nodes.filter(n => n.type === 'blockNode').length === 0}>
                 <Play className="h-4 w-4 mr-2" />
                 Animate
               </Button>
@@ -1717,6 +1740,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
               fitView
               fitViewOptions={{ padding: 0.2 }}
               className="bg-zinc-950"
+              proOptions={{ hideAttribution: true }}
               defaultEdgeOptions={{
                 animated: true,
                 type: 'smoothstep',
