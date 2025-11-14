@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import type { Edge, Node } from "reactflow"
-import ReactFlow, { Background, Controls } from "reactflow"
+import ReactFlow, { Background, Controls, MarkerType } from "reactflow"
 import "reactflow/dist/style.css"
 
 const baseNodes: Node[] = [
@@ -66,7 +66,7 @@ const baseEdges: Edge[] = [
     type: "smoothstep",
     style: { stroke: "rgba(231, 138, 83, 0.8)", strokeWidth: 2 },
     markerEnd: {
-      type: "arrowclosed",
+      type: MarkerType.ArrowClosed,
       color: "rgba(231, 138, 83, 0.9)",
     },
   },
@@ -78,7 +78,7 @@ const baseEdges: Edge[] = [
     type: "smoothstep",
     style: { stroke: "rgba(231, 138, 83, 0.8)", strokeWidth: 2 },
     markerEnd: {
-      type: "arrowclosed",
+      type: MarkerType.ArrowClosed,
       color: "rgba(231, 138, 83, 0.9)",
     },
   },
