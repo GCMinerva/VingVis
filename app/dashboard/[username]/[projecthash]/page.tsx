@@ -1136,7 +1136,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                 <TabsTrigger value="hardware">Hardware</TabsTrigger>
               </TabsList>
 
-            <TabsContent value="blocks" className="flex-1 flex flex-col m-0 overflow-hidden">
+            <TabsContent value="blocks" className="flex-1 flex flex-col m-0 overflow-hidden h-0">
               {/* Block Search */}
               <div className="p-3 border-b border-zinc-800 flex-shrink-0">
                 <Input
@@ -1181,7 +1181,8 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                   </Button>
                 </div>
               </div>
-              <ScrollArea className="flex-1 p-3">
+              <ScrollArea className="flex-1 h-full">
+                <div className="p-3">
                 <div className="space-y-1.5">
                   {BLOCK_TYPES[activeTab]
                     .filter(block =>
@@ -1220,11 +1221,13 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                     </div>
                   )}
                 </div>
+                </div>
               </ScrollArea>
             </TabsContent>
 
-            <TabsContent value="hardware" className="flex-1 m-0 flex flex-col overflow-hidden">
-              <ScrollArea className="flex-1 p-3">
+            <TabsContent value="hardware" className="flex-1 m-0 flex flex-col overflow-hidden h-0">
+              <ScrollArea className="flex-1 h-full">
+                <div className="p-3">
                 <div className="space-y-4">
                 {/* Expansion Hub Toggle */}
                 <div className="p-3 bg-zinc-800/50 rounded border border-zinc-700">
@@ -1717,6 +1720,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                       </div>
                     ))}
                   </div>
+                </div>
                 </div>
                 </div>
               </ScrollArea>
