@@ -35,7 +35,6 @@ import {
   Move,
   Target,
   Spline,
-  Pencil,
   Repeat,
   GitBranch,
   Zap,
@@ -233,6 +232,8 @@ export default function CurvesEditor() {
   const [showGrid, setShowGrid] = useState(false)
   const [gridSize, setGridSize] = useState(24)
   const [protractorLockToRobot, setProtractorLockToRobot] = useState(false)
+  const [selectedField, setSelectedField] = useState<'intothedeep' | 'centerstage' | 'decode'>('intothedeep')
+  const [fieldImage, setFieldImage] = useState<HTMLImageElement | null>(null)
   const [activeTab, setActiveTab] = useState<'movement' | 'mechanisms' | 'sensors' | 'control'>('movement')
   const [pathMode, setPathMode] = useState<'roadrunner' | 'pedropathing' | 'simple'>('simple')
   const [blockSearchQuery, setBlockSearchQuery] = useState('')
@@ -251,7 +252,6 @@ export default function CurvesEditor() {
   const [isDraggingRobot, setIsDraggingRobot] = useState(false)
   const [path, setPath] = useState<{x: number, y: number, heading: number}[]>([])
 
-  const [isDrawingMode, setIsDrawingMode] = useState(false)
   const [isDrawing, setIsDrawing] = useState(false)
   const [lastDrawnPoint, setLastDrawnPoint] = useState<{ x: number; y: number } | null>(null)
 
@@ -290,6 +290,18 @@ export default function CurvesEditor() {
     }
   }, [user, authLoading, router])
 
+  // Load field image when selected field changes
+  useEffect(() => {
+    const img = new Image()
+    img.src = `/fields/${selectedField}.webp`
+    img.onload = () => {
+      setFieldImage(img)
+    }
+    img.onerror = () => {
+      console.error('Failed to load field image:', selectedField)
+    }
+  }, [selectedField])
+
   useEffect(() => {
     if (params.projecthash) {
       if (user) {
@@ -309,61 +321,34 @@ export default function CurvesEditor() {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     const scale = canvas.width / 144
 
-    // Background
-    ctx.fillStyle = '#1a1a1a'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    // Draw field background image if loaded
+    if (fieldImage) {
+      ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height)
+    } else {
+      // Fallback background if image not loaded
+      ctx.fillStyle = '#1a1a1a'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    // Grid
-    ctx.strokeStyle = '#2a2a2a'
-    ctx.lineWidth = 1
-    for (let i = 0; i <= 6; i++) {
-      const pos = i * 24 * scale
-      ctx.beginPath()
-      ctx.moveTo(pos, 0)
-      ctx.lineTo(pos, canvas.height)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(0, pos)
-      ctx.lineTo(canvas.width, pos)
-      ctx.stroke()
+      // Grid
+      ctx.strokeStyle = '#2a2a2a'
+      ctx.lineWidth = 1
+      for (let i = 0; i <= 6; i++) {
+        const pos = i * 24 * scale
+        ctx.beginPath()
+        ctx.moveTo(pos, 0)
+        ctx.lineTo(pos, canvas.height)
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.moveTo(0, pos)
+        ctx.lineTo(canvas.width, pos)
+        ctx.stroke()
+      }
+
+      // Border
+      ctx.strokeStyle = '#555'
+      ctx.lineWidth = 3
+      ctx.strokeRect(0, 0, canvas.width, canvas.height)
     }
-
-    // Tile numbers
-    ctx.fillStyle = '#444'
-    ctx.font = '10px monospace'
-    for (let i = 1; i < 6; i++) {
-      const pos = i * 24 * scale
-      ctx.fillText(`${i * 24}"`, pos - 15, 12)
-      ctx.fillText(`${i * 24}"`, 5, pos + 4)
-    }
-
-    // Border
-    ctx.strokeStyle = '#555'
-    ctx.lineWidth = 3
-    ctx.strokeRect(0, 0, canvas.width, canvas.height)
-
-    // Starting zones
-    const zoneSize = 24 * scale
-    ctx.fillStyle = 'rgba(59, 130, 246, 0.15)'
-    ctx.fillRect(0, 0, zoneSize, zoneSize)
-    ctx.fillRect(canvas.width - zoneSize, 0, zoneSize, zoneSize)
-    ctx.fillStyle = 'rgba(239, 68, 68, 0.15)'
-    ctx.fillRect(0, canvas.height - zoneSize, zoneSize, zoneSize)
-    ctx.fillRect(canvas.width - zoneSize, canvas.height - zoneSize, zoneSize, zoneSize)
-
-    // Center lines
-    ctx.strokeStyle = '#333'
-    ctx.lineWidth = 2
-    ctx.setLineDash([10, 10])
-    ctx.beginPath()
-    ctx.moveTo(canvas.width / 2, 0)
-    ctx.lineTo(canvas.width / 2, canvas.height)
-    ctx.stroke()
-    ctx.beginPath()
-    ctx.moveTo(0, canvas.height / 2)
-    ctx.lineTo(canvas.width, canvas.height / 2)
-    ctx.stroke()
-    ctx.setLineDash([])
 
     // Draw path
     if (path.length > 1) {
@@ -433,7 +418,7 @@ export default function CurvesEditor() {
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves])
+  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves, fieldImage])
 
   useEffect(() => {
     drawField()
@@ -968,14 +953,6 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
               <Grid3x3 className="h-4 w-4 mr-2" />
               Grid
             </Button>
-            <Button
-              onClick={() => setIsDrawingMode(!isDrawingMode)}
-              size="sm"
-              variant={isDrawingMode ? 'default' : 'ghost'}
-            >
-              <Pencil className="h-4 w-4 mr-2" />
-              {isDrawingMode ? 'Exit Draw' : 'Draw Mode'}
-            </Button>
             <Button onClick={undo} disabled={historyIndex <= 0} size="sm" variant="ghost">
               <Undo2 className="h-4 w-4" />
             </Button>
@@ -985,6 +962,19 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-zinc-400">Field</Label>
+            <Select value={selectedField} onValueChange={(v: any) => setSelectedField(v)}>
+              <SelectTrigger className="w-36 h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="intothedeep">Into the Deep</SelectItem>
+                <SelectItem value="centerstage">CenterStage</SelectItem>
+                <SelectItem value="decode">Decode</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex items-center gap-2">
             <Label className="text-xs text-zinc-400">Curves</Label>
             <Switch checked={useCurves} onCheckedChange={setUseCurves} />
@@ -1817,9 +1807,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                 height={400}
                 className="w-full h-full"
                 style={{
-                  cursor: isDrawingMode ? 'crosshair' :
-                          isDraggingRobot ? 'grabbing' :
-                          'default'
+                  cursor: isDraggingRobot ? 'grabbing' : 'default'
                 }}
                 onMouseDown={handleCanvasMouseDown}
                 onMouseMove={handleCanvasMouseMove}
