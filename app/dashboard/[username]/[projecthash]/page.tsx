@@ -80,6 +80,9 @@ import {
   PanelLeftClose,
   PanelLeft,
   Wrench,
+  Maximize2,
+  Minimize2,
+  RotateCcw as RotateIcon,
 } from "lucide-react"
 
 type Project = {
@@ -305,6 +308,13 @@ function CurvesEditorInner() {
   const [lastDrawnPoint, setLastDrawnPoint] = useState<{ x: number; y: number } | null>(null)
   const [drawnPoints, setDrawnPoints] = useState<{x: number, y: number}[]>([])
 
+  // Fullscreen and waypoint interaction states
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showWaypoints, setShowWaypoints] = useState(true)
+  const [draggedWaypointIndex, setDraggedWaypointIndex] = useState<number | null>(null)
+  const [isRotatingRobot, setIsRotatingRobot] = useState(false)
+  const fieldContainerRef = useRef<HTMLDivElement>(null)
+
   const [motors, setMotors] = useState<Motor[]>([
     { name: 'motorFL', port: 0, reversed: false },
     { name: 'motorFR', port: 1, reversed: false },
@@ -477,6 +487,43 @@ function CurvesEditorInner() {
       })
     }
 
+    // Draw waypoint markers for each node block
+    if (showWaypoints && !isAnimating) {
+      const waypoints = getWaypoints()
+      waypoints.forEach((waypoint, index) => {
+        const x = (waypoint.x / 144) * canvas.width
+        const y = (waypoint.y / 144) * canvas.height
+
+        // Draw waypoint circle
+        ctx.fillStyle = index === 0 ? '#10b981' : '#3b82f6'
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.arc(x, y, 8, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.stroke()
+
+        // Draw waypoint number
+        ctx.fillStyle = '#ffffff'
+        ctx.font = 'bold 10px monospace'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(index.toString(), x, y)
+
+        // Draw heading indicator
+        if (index > 0) {
+          ctx.strokeStyle = '#fbbf24'
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          const headingX = x + 15 * Math.cos((waypoint.heading * Math.PI) / 180)
+          const headingY = y + 15 * Math.sin((waypoint.heading * Math.PI) / 180)
+          ctx.moveTo(x, y)
+          ctx.lineTo(headingX, headingY)
+          ctx.stroke()
+        }
+      })
+    }
+
     // Ruler
     if (showRuler) {
       ctx.strokeStyle = '#fbbf24'
@@ -492,7 +539,7 @@ function CurvesEditorInner() {
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves, fieldImage, isDrawing, drawnPoints])
+  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves, fieldImage, isDrawing, drawnPoints, showWaypoints, nodes, edges])
 
   useEffect(() => {
     drawField()
@@ -630,6 +677,54 @@ function CurvesEditorInner() {
     }
   }
 
+  const updateWaypointPosition = (waypointIndex: number, newX: number, newY: number) => {
+    // Get current waypoints and find which node corresponds to this waypoint
+    const waypoints = getWaypoints()
+    if (waypointIndex >= waypoints.length) return
+
+    // Build ordered list of nodes
+    const orderedNodes: Node<BlockNodeData>[] = []
+    const visited = new Set<string>()
+
+    const traverseNodes = (nodeId: string) => {
+      if (visited.has(nodeId)) return
+      visited.add(nodeId)
+
+      const node = nodes.find(n => n.id === nodeId)
+      if (node && node.type === 'blockNode') {
+        orderedNodes.push(node)
+      }
+
+      const outgoingEdges = edges.filter(e => e.source === nodeId)
+      outgoingEdges.forEach(edge => traverseNodes(edge.target))
+    }
+
+    traverseNodes('start')
+
+    // The waypoint index (minus 1 since index 0 is robot start) maps to the node
+    const nodeIndex = waypointIndex - 1
+    if (nodeIndex < 0 || nodeIndex >= orderedNodes.length) return
+
+    const targetNode = orderedNodes[nodeIndex]
+
+    // Update the node's target position
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === targetNode.id) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              targetX: newX,
+              targetY: newY,
+            },
+          }
+        }
+        return node
+      })
+    )
+  }
+
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -646,11 +741,28 @@ function CurvesEditorInner() {
       return
     }
 
-    // Check if clicking on robot
-    const distance = Math.sqrt(Math.pow(x - robotX, 2) + Math.pow(y - robotY, 2))
-    if (distance < 15) {
-      setIsDraggingRobot(true)
+    // Check if clicking on robot - shift+click to rotate, otherwise drag
+    const robotDistance = Math.sqrt(Math.pow(x - robotX, 2) + Math.pow(y - robotY, 2))
+    if (robotDistance < 15) {
+      if (e.shiftKey) {
+        setIsRotatingRobot(true)
+      } else {
+        setIsDraggingRobot(true)
+      }
       return
+    }
+
+    // Check if clicking on a waypoint
+    if (showWaypoints && !isAnimating) {
+      const waypoints = getWaypoints()
+      for (let i = 1; i < waypoints.length; i++) { // Skip first waypoint (robot start position)
+        const waypoint = waypoints[i]
+        const distance = Math.sqrt(Math.pow(x - waypoint.x, 2) + Math.pow(y - waypoint.y, 2))
+        if (distance < 10) {
+          setDraggedWaypointIndex(i)
+          return
+        }
+      }
     }
   }
 
@@ -673,9 +785,23 @@ function CurvesEditorInner() {
       return
     }
 
+    // Rotate robot
+    if (isRotatingRobot) {
+      const angle = Math.atan2(y - robotY, x - robotX) * (180 / Math.PI)
+      setRobotHeading(angle)
+      return
+    }
+
+    // Drag robot
     if (isDraggingRobot) {
       setRobotX(x)
       setRobotY(y)
+      return
+    }
+
+    // Drag waypoint
+    if (draggedWaypointIndex !== null) {
+      updateWaypointPosition(draggedWaypointIndex, x, y)
       return
     }
   }
@@ -687,9 +813,11 @@ function CurvesEditorInner() {
     }
 
     setIsDraggingRobot(false)
+    setIsRotatingRobot(false)
     setIsDrawing(false)
     setLastDrawnPoint(null)
     setDrawnPoints([])
+    setDraggedWaypointIndex(null)
   }
 
   const convertDrawnPointsToActions = () => {
@@ -787,6 +915,32 @@ function CurvesEditorInner() {
   const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     // Double-click functionality removed
   }
+
+  const toggleFullscreen = () => {
+    if (!fieldContainerRef.current) return
+
+    if (!isFullscreen) {
+      if (fieldContainerRef.current.requestFullscreen) {
+        fieldContainerRef.current.requestFullscreen()
+      }
+      setIsFullscreen(true)
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen()
+      }
+      setIsFullscreen(false)
+    }
+  }
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement)
+    }
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  }, [])
 
   const loadGuestProject = () => {
     try {
@@ -1270,6 +1424,28 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                 <Pencil className="h-4 w-4 mr-2" />
                 Drawing Mode
               </DropdownMenuCheckboxItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={showWaypoints}
+                onCheckedChange={setShowWaypoints}
+              >
+                <Waypoints className="h-4 w-4 mr-2" />
+                Show Waypoints
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={toggleFullscreen}>
+                {isFullscreen ? (
+                  <>
+                    <Minimize2 className="h-4 w-4 mr-2" />
+                    Exit Fullscreen
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 className="h-4 w-4 mr-2" />
+                    Fullscreen Field
+                  </>
+                )}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -2317,19 +2493,22 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
               <div className="font-semibold text-zinc-300 mb-1">Interactive Controls:</div>
               <div className="space-y-0.5">
                 <div>• <span className="text-green-400">Drag robot</span>: Move position</div>
-                <div>• <span className="text-blue-400">Ruler</span>: Measure distances</div>
-                <div>• <span className="text-purple-400">Grid</span>: Snap to grid</div>
+                <div>• <span className="text-yellow-400">Shift+Drag robot</span>: Rotate heading</div>
+                <div>• <span className="text-blue-400">Drag waypoints</span>: Reposition blocks</div>
+                <div>• <span className="text-purple-400">Drawing mode</span>: Draw path on field</div>
               </div>
             </div>
-            <div className="aspect-square bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden relative">
+            <div ref={fieldContainerRef} className={`aspect-square bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden relative ${isFullscreen ? 'w-screen h-screen !aspect-auto flex items-center justify-center bg-black' : ''}`}>
               <canvas
                 ref={canvasRef}
                 width={400}
                 height={400}
-                className="w-full h-full"
+                className={isFullscreen ? 'max-w-full max-h-full' : 'w-full h-full'}
                 style={{
                   cursor: isDrawingMode ? 'crosshair' :
                           isDraggingRobot ? 'grabbing' :
+                          isRotatingRobot ? 'crosshair' :
+                          draggedWaypointIndex !== null ? 'move' :
                           'default'
                 }}
                 onMouseDown={handleCanvasMouseDown}
