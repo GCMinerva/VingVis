@@ -41,10 +41,7 @@ export default function DashboardPage() {
   })
 
   useEffect(() => {
-    // Require authentication - redirect to waitlist
-    if (!authLoading && !user) {
-      router.push("/waitlist")
-    }
+    // Authentication disabled - allow access without login
   }, [user, authLoading, router])
 
   useEffect(() => {

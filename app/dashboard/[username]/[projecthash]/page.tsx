@@ -286,9 +286,7 @@ export default function CurvesEditor() {
       // Using sessionStorage instead of localStorage for better security
       const guestMode = sessionStorage.getItem('guestMode') === 'true'
       setIsGuest(guestMode)
-      if (!authLoading && !user && !guestMode) {
-        router.push("/login")
-      }
+      // Authentication disabled - allow access without login
     }
   }, [user, authLoading, router])
 
