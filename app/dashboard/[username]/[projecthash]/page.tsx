@@ -35,6 +35,7 @@ import {
   Move,
   Target,
   Spline,
+  Pencil,
   Repeat,
   GitBranch,
   Zap,
@@ -252,8 +253,10 @@ export default function CurvesEditor() {
   const [isDraggingRobot, setIsDraggingRobot] = useState(false)
   const [path, setPath] = useState<{x: number, y: number, heading: number}[]>([])
 
+  const [isDrawingMode, setIsDrawingMode] = useState(false)
   const [isDrawing, setIsDrawing] = useState(false)
   const [lastDrawnPoint, setLastDrawnPoint] = useState<{ x: number; y: number } | null>(null)
+  const [drawnPoints, setDrawnPoints] = useState<{x: number, y: number}[]>([])
 
   const [motors, setMotors] = useState<Motor[]>([
     { name: 'motorFL', port: 0, reversed: false },
@@ -403,6 +406,30 @@ export default function CurvesEditor() {
 
     drawRobot(ctx, robotX, robotY, robotHeading, scale)
 
+    // Draw current drawing path
+    if (isDrawing && drawnPoints.length > 0) {
+      ctx.strokeStyle = '#fbbf24'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      drawnPoints.forEach((point, i) => {
+        const x = (point.x / 144) * canvas.width
+        const y = (point.y / 144) * canvas.height
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      })
+      ctx.stroke()
+
+      // Draw points
+      drawnPoints.forEach((point) => {
+        const x = (point.x / 144) * canvas.width
+        const y = (point.y / 144) * canvas.height
+        ctx.fillStyle = '#fbbf24'
+        ctx.beginPath()
+        ctx.arc(x, y, 3, 0, Math.PI * 2)
+        ctx.fill()
+      })
+    }
+
     // Ruler
     if (showRuler) {
       ctx.strokeStyle = '#fbbf24'
@@ -418,7 +445,7 @@ export default function CurvesEditor() {
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves, fieldImage])
+  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves, fieldImage, isDrawing, drawnPoints])
 
   useEffect(() => {
     drawField()
@@ -541,6 +568,14 @@ export default function CurvesEditor() {
     const x = ((e.clientX - rect.left) / rect.width) * 144
     const y = ((e.clientY - rect.top) / rect.height) * 144
 
+    // Drawing mode - start drawing
+    if (isDrawingMode) {
+      setIsDrawing(true)
+      setLastDrawnPoint({ x, y })
+      setDrawnPoints([{ x, y }])
+      return
+    }
+
     // Check if clicking on robot
     const distance = Math.sqrt(Math.pow(x - robotX, 2) + Math.pow(y - robotY, 2))
     if (distance < 15) {
@@ -557,6 +592,17 @@ export default function CurvesEditor() {
     const x = Math.max(9, Math.min(135, ((e.clientX - rect.left) / rect.width) * 144))
     const y = Math.max(9, Math.min(135, ((e.clientY - rect.top) / rect.height) * 144))
 
+    // Drawing mode - continuously add points
+    if (isDrawing && lastDrawnPoint) {
+      const dist = Math.sqrt(Math.pow(x - lastDrawnPoint.x, 2) + Math.pow(y - lastDrawnPoint.y, 2))
+      // Add point every 5 inches of distance
+      if (dist > 5) {
+        setDrawnPoints(prev => [...prev, { x, y }])
+        setLastDrawnPoint({ x, y })
+      }
+      return
+    }
+
     if (isDraggingRobot) {
       setRobotX(x)
       setRobotY(y)
@@ -565,9 +611,45 @@ export default function CurvesEditor() {
   }
 
   const handleCanvasMouseUp = () => {
+    // Convert drawn points to actions when drawing ends
+    if (isDrawing && drawnPoints.length > 1) {
+      convertDrawnPointsToActions()
+    }
+
     setIsDraggingRobot(false)
     setIsDrawing(false)
     setLastDrawnPoint(null)
+    setDrawnPoints([])
+  }
+
+  const convertDrawnPointsToActions = () => {
+    if (drawnPoints.length < 2) return
+
+    // Simplify points - take every Nth point to avoid too many actions
+    const simplified: {x: number, y: number}[] = []
+    const step = Math.max(1, Math.floor(drawnPoints.length / 10)) // Max 10 waypoints
+
+    for (let i = 0; i < drawnPoints.length; i += step) {
+      simplified.push(drawnPoints[i])
+    }
+    // Always include the last point
+    if (simplified[simplified.length - 1] !== drawnPoints[drawnPoints.length - 1]) {
+      simplified.push(drawnPoints[drawnPoints.length - 1])
+    }
+
+    // Convert to moveToPosition actions
+    const newActions: ActionBlock[] = simplified.map((point, index) => ({
+      id: `${Date.now()}_${index}`,
+      type: 'moveToPosition',
+      label: 'Move to Position',
+      targetX: point.x,
+      targetY: point.y,
+      targetHeading: robotHeading,
+      curveType: useCurves ? 'spline' : 'linear',
+    }))
+
+    setActions([...actions, ...newActions])
+    addToHistory([...actions, ...newActions])
   }
 
   const handleCanvasContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -952,6 +1034,14 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
             <Button onClick={() => setShowGrid(!showGrid)} size="sm" variant="ghost">
               <Grid3x3 className="h-4 w-4 mr-2" />
               Grid
+            </Button>
+            <Button
+              onClick={() => setIsDrawingMode(!isDrawingMode)}
+              size="sm"
+              variant={isDrawingMode ? 'default' : 'ghost'}
+            >
+              <Pencil className="h-4 w-4 mr-2" />
+              {isDrawingMode ? 'Exit Draw' : 'Draw'}
             </Button>
             <Button onClick={undo} disabled={historyIndex <= 0} size="sm" variant="ghost">
               <Undo2 className="h-4 w-4" />
@@ -1807,7 +1897,9 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                 height={400}
                 className="w-full h-full"
                 style={{
-                  cursor: isDraggingRobot ? 'grabbing' : 'default'
+                  cursor: isDrawingMode ? 'crosshair' :
+                          isDraggingRobot ? 'grabbing' :
+                          'default'
                 }}
                 onMouseDown={handleCanvasMouseDown}
                 onMouseMove={handleCanvasMouseMove}
