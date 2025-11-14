@@ -85,27 +85,39 @@ const ICON_MAP: { [key: string]: any } = {
 const getCategoryColor = (type: string) => {
   if (type.includes('move') || type.includes('turn') || type.includes('strafe') || type === 'splineTo' || type === 'arcMove' || type === 'pivotTurn' || type === 'followPath') {
     return {
-      bg: 'rgba(59, 130, 246, 0.15)',
-      border: 'rgba(59, 130, 246, 0.6)',
-      glow: '0 0 15px rgba(59, 130, 246, 0.3)'
+      bg: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.2) 100%)',
+      border: 'rgba(59, 130, 246, 0.7)',
+      glow: '0 0 20px rgba(59, 130, 246, 0.4)',
+      iconBg: 'rgba(59, 130, 246, 0.2)',
+      category: 'Movement',
+      categoryColor: '#3b82f6'
     }
   } else if (type.includes('servo') || type.includes('Motor') || type.includes('motor')) {
     return {
-      bg: 'rgba(139, 92, 246, 0.15)',
-      border: 'rgba(139, 92, 246, 0.6)',
-      glow: '0 0 15px rgba(139, 92, 246, 0.3)'
+      bg: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(139, 92, 246, 0.2) 100%)',
+      border: 'rgba(139, 92, 246, 0.7)',
+      glow: '0 0 20px rgba(139, 92, 246, 0.4)',
+      iconBg: 'rgba(139, 92, 246, 0.2)',
+      category: 'Mechanism',
+      categoryColor: '#8b5cf6'
     }
   } else if (type.includes('read') || type.includes('IMU') || type.includes('Distance') || type.includes('Color') || type.includes('Touch') || type === 'waitForSensor') {
     return {
-      bg: 'rgba(236, 72, 153, 0.15)',
-      border: 'rgba(236, 72, 153, 0.6)',
-      glow: '0 0 15px rgba(236, 72, 153, 0.3)'
+      bg: 'linear-gradient(135deg, rgba(236, 72, 153, 0.1) 0%, rgba(236, 72, 153, 0.2) 100%)',
+      border: 'rgba(236, 72, 153, 0.7)',
+      glow: '0 0 20px rgba(236, 72, 153, 0.4)',
+      iconBg: 'rgba(236, 72, 153, 0.2)',
+      category: 'Sensor',
+      categoryColor: '#ec4899'
     }
   } else {
     return {
-      bg: 'rgba(16, 185, 129, 0.15)',
-      border: 'rgba(16, 185, 129, 0.6)',
-      glow: '0 0 15px rgba(16, 185, 129, 0.3)'
+      bg: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.2) 100%)',
+      border: 'rgba(16, 185, 129, 0.7)',
+      glow: '0 0 20px rgba(16, 185, 129, 0.4)',
+      iconBg: 'rgba(16, 185, 129, 0.2)',
+      category: 'Control',
+      categoryColor: '#10b981'
     }
   }
 }
@@ -142,55 +154,138 @@ export const BlockNode = memo(({ data, selected }: NodeProps<BlockNodeData>) => 
       style={{
         background: colors.bg,
         border: `2px solid ${colors.border}`,
-        boxShadow: selected ? `${colors.glow}, 0 4px 12px rgba(0,0,0,0.3)` : '0 2px 8px rgba(0,0,0,0.2)',
-        borderRadius: '12px',
-        padding: '12px 16px',
-        minWidth: '200px',
-        maxWidth: '250px',
-        transition: 'all 0.2s ease',
+        boxShadow: selected
+          ? `${colors.glow}, 0 8px 24px rgba(0,0,0,0.4)`
+          : '0 4px 12px rgba(0,0,0,0.3)',
+        borderRadius: '14px',
+        minWidth: '220px',
+        maxWidth: '280px',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        transform: selected ? 'scale(1.02)' : 'scale(1)',
+        backdropFilter: 'blur(8px)',
       }}
-      className="relative"
+      className="relative overflow-hidden"
     >
+      {/* Top gradient accent */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '3px',
+          background: `linear-gradient(90deg, transparent, ${colors.categoryColor}, transparent)`,
+          opacity: selected ? 1 : 0.6,
+        }}
+      />
+
       <Handle
         type="target"
         position={Position.Left}
         style={{
           background: colors.border,
-          width: '10px',
-          height: '10px',
+          width: '12px',
+          height: '12px',
           border: '2px solid #18181b',
+          transition: 'all 0.2s ease',
         }}
       />
 
-      <div className="flex items-start gap-2">
-        <div className="flex-shrink-0 mt-0.5">
-          <Icon className="h-5 w-5 text-white" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-sm text-white mb-1">
-            {data.label}
-          </div>
-          {getNodeDetails() && (
-            <div className="text-xs text-zinc-300 font-mono break-words">
-              {getNodeDetails()}
-            </div>
-          )}
+      {/* Header with category badge */}
+      <div style={{ padding: '10px 14px 8px' }}>
+        <div className="flex items-center justify-between mb-2">
+          <span
+            style={{
+              fontSize: '9px',
+              fontWeight: '600',
+              letterSpacing: '0.5px',
+              color: colors.categoryColor,
+              textTransform: 'uppercase',
+              opacity: 0.8,
+            }}
+          >
+            {colors.category}
+          </span>
           {data.score && data.score > 0 && (
-            <div className="text-xs bg-yellow-600/30 text-yellow-300 px-2 py-0.5 rounded mt-1 inline-block">
-              +{data.score} pts
+            <div
+              style={{
+                fontSize: '10px',
+                fontWeight: '700',
+                background: 'rgba(234, 179, 8, 0.2)',
+                color: '#fbbf24',
+                padding: '2px 6px',
+                borderRadius: '6px',
+                border: '1px solid rgba(234, 179, 8, 0.3)',
+              }}
+            >
+              +{data.score}
             </div>
           )}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div
+            style={{
+              background: colors.iconBg,
+              borderRadius: '10px',
+              padding: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              border: `1px solid ${colors.border}`,
+            }}
+          >
+            <Icon className="h-5 w-5 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div
+              style={{
+                fontWeight: '600',
+                fontSize: '13px',
+                color: '#ffffff',
+                lineHeight: '1.3',
+                marginBottom: '2px',
+              }}
+            >
+              {data.label}
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Details section */}
+      {getNodeDetails() && (
+        <div
+          style={{
+            padding: '8px 14px 10px',
+            background: 'rgba(0, 0, 0, 0.2)',
+            borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+          }}
+        >
+          <div
+            style={{
+              fontSize: '11px',
+              color: '#d4d4d8',
+              fontFamily: 'monospace',
+              fontWeight: '500',
+              wordBreak: 'break-word',
+            }}
+          >
+            {getNodeDetails()}
+          </div>
+        </div>
+      )}
 
       <Handle
         type="source"
         position={Position.Right}
         style={{
           background: colors.border,
-          width: '10px',
-          height: '10px',
+          width: '12px',
+          height: '12px',
           border: '2px solid #18181b',
+          transition: 'all 0.2s ease',
         }}
       />
     </div>
@@ -204,29 +299,68 @@ export const StartNode = memo(({ selected }: NodeProps) => {
   return (
     <div
       style={{
-        background: 'rgba(16, 185, 129, 0.2)',
+        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.25) 100%)',
         border: '2px solid rgba(16, 185, 129, 0.8)',
-        boxShadow: selected ? '0 0 20px rgba(16, 185, 129, 0.4), 0 4px 12px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.2)',
-        borderRadius: '12px',
-        padding: '14px 24px',
-        minWidth: '140px',
-        transition: 'all 0.2s ease',
+        boxShadow: selected
+          ? '0 0 30px rgba(16, 185, 129, 0.5), 0 8px 24px rgba(0,0,0,0.4)'
+          : '0 4px 16px rgba(0,0,0,0.3)',
+        borderRadius: '16px',
+        padding: '16px 28px',
+        minWidth: '160px',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        transform: selected ? 'scale(1.05)' : 'scale(1)',
+        backdropFilter: 'blur(8px)',
       }}
-      className="relative"
+      className="relative overflow-hidden"
     >
-      <div className="text-center">
-        <div className="font-bold text-base text-white">START</div>
-        <div className="text-xs text-zinc-300 mt-1">Begin Execution</div>
+      {/* Top gradient accent */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '4px',
+          background: 'linear-gradient(90deg, transparent, #10b981, transparent)',
+          opacity: selected ? 1 : 0.7,
+        }}
+      />
+
+      <div className="text-center relative z-10">
+        <div
+          style={{
+            fontWeight: '700',
+            fontSize: '16px',
+            color: '#ffffff',
+            letterSpacing: '1px',
+            marginBottom: '4px',
+            textShadow: '0 2px 8px rgba(16, 185, 129, 0.4)',
+          }}
+        >
+          START
+        </div>
+        <div
+          style={{
+            fontSize: '11px',
+            color: '#a3e635',
+            fontWeight: '500',
+            opacity: 0.9,
+          }}
+        >
+          Begin Execution
+        </div>
       </div>
 
       <Handle
         type="source"
         position={Position.Right}
         style={{
-          background: 'rgba(16, 185, 129, 0.8)',
-          width: '12px',
-          height: '12px',
+          background: 'rgba(16, 185, 129, 0.9)',
+          width: '14px',
+          height: '14px',
           border: '2px solid #18181b',
+          boxShadow: '0 0 8px rgba(16, 185, 129, 0.6)',
+          transition: 'all 0.2s ease',
         }}
       />
     </div>
@@ -240,30 +374,69 @@ export const EndNode = memo(({ selected }: NodeProps) => {
   return (
     <div
       style={{
-        background: 'rgba(239, 68, 68, 0.2)',
+        background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.25) 100%)',
         border: '2px solid rgba(239, 68, 68, 0.8)',
-        boxShadow: selected ? '0 0 20px rgba(239, 68, 68, 0.4), 0 4px 12px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.2)',
-        borderRadius: '12px',
-        padding: '14px 24px',
-        minWidth: '140px',
-        transition: 'all 0.2s ease',
+        boxShadow: selected
+          ? '0 0 30px rgba(239, 68, 68, 0.5), 0 8px 24px rgba(0,0,0,0.4)'
+          : '0 4px 16px rgba(0,0,0,0.3)',
+        borderRadius: '16px',
+        padding: '16px 28px',
+        minWidth: '160px',
+        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        transform: selected ? 'scale(1.05)' : 'scale(1)',
+        backdropFilter: 'blur(8px)',
       }}
-      className="relative"
+      className="relative overflow-hidden"
     >
+      {/* Top gradient accent */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '4px',
+          background: 'linear-gradient(90deg, transparent, #ef4444, transparent)',
+          opacity: selected ? 1 : 0.7,
+        }}
+      />
+
       <Handle
         type="target"
         position={Position.Left}
         style={{
-          background: 'rgba(239, 68, 68, 0.8)',
-          width: '12px',
-          height: '12px',
+          background: 'rgba(239, 68, 68, 0.9)',
+          width: '14px',
+          height: '14px',
           border: '2px solid #18181b',
+          boxShadow: '0 0 8px rgba(239, 68, 68, 0.6)',
+          transition: 'all 0.2s ease',
         }}
       />
 
-      <div className="text-center">
-        <div className="font-bold text-base text-white">END</div>
-        <div className="text-xs text-zinc-300 mt-1">Complete</div>
+      <div className="text-center relative z-10">
+        <div
+          style={{
+            fontWeight: '700',
+            fontSize: '16px',
+            color: '#ffffff',
+            letterSpacing: '1px',
+            marginBottom: '4px',
+            textShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
+          }}
+        >
+          END
+        </div>
+        <div
+          style={{
+            fontSize: '11px',
+            color: '#fca5a5',
+            fontWeight: '500',
+            opacity: 0.9,
+          }}
+        >
+          Complete
+        </div>
       </div>
     </div>
   )

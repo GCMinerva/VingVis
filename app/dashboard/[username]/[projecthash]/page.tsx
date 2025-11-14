@@ -2483,8 +2483,23 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
           <div className="flex-1 p-4 overflow-auto">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-white">Field Preview</h3>
-              <div className="text-xs text-zinc-500">
-                {useCurves ? 'Smooth Curves' : 'Linear'}
+              <div className="flex items-center gap-2">
+                <div className="text-xs text-zinc-500">
+                  {useCurves ? 'Smooth Curves' : 'Linear'}
+                </div>
+                <Button
+                  onClick={toggleFullscreen}
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0"
+                  title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                >
+                  {isFullscreen ? (
+                    <Minimize2 className="h-4 w-4" />
+                  ) : (
+                    <Maximize2 className="h-4 w-4" />
+                  )}
+                </Button>
               </div>
             </div>
 
