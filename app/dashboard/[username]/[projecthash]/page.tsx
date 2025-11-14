@@ -1202,8 +1202,9 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
               </ScrollArea>
             </TabsContent>
 
-            <TabsContent value="hardware" className="flex-1 m-0 p-3 overflow-auto">
-              <div className="space-y-4">
+            <TabsContent value="hardware" className="flex-1 m-0 flex flex-col overflow-hidden">
+              <ScrollArea className="flex-1 p-3">
+                <div className="space-y-4">
                 {/* Expansion Hub Toggle */}
                 <div className="p-3 bg-zinc-800/50 rounded border border-zinc-700">
                   <label className="flex items-center justify-between cursor-pointer">
@@ -1696,7 +1697,8 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                     ))}
                   </div>
                 </div>
-              </div>
+                </div>
+              </ScrollArea>
             </TabsContent>
           </Tabs>
         </div>
