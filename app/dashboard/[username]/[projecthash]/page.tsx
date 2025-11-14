@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback, useRef, DragEvent } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
@@ -15,6 +15,21 @@ import { Slider } from "@/components/ui/slider"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import ReactFlow, {
+  Background,
+  Controls,
+  MiniMap,
+  addEdge,
+  useNodesState,
+  useEdgesState,
+  Connection,
+  Edge,
+  Node,
+  ReactFlowProvider,
+  ReactFlowInstance,
+} from "reactflow"
+import "reactflow/dist/style.css"
+import { BlockNode, StartNode, EndNode, nodeTypes, BlockNodeData } from "@/components/block-nodes"
 import {
   Save,
   Play,
@@ -217,7 +232,7 @@ function generateSpline(points: {x: number, y: number, heading: number}[], steps
   return result
 }
 
-export default function CurvesEditor() {
+function CurvesEditorInner() {
   const params = useParams()
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
@@ -242,6 +257,20 @@ export default function CurvesEditor() {
 
   const [actions, setActions] = useState<ActionBlock[]>([])
   const [selectedAction, setSelectedAction] = useState<ActionBlock | null>(null)
+
+  // ReactFlow state
+  const [nodes, setNodes, onNodesChange] = useNodesState([
+    {
+      id: 'start',
+      type: 'startNode',
+      position: { x: 50, y: 200 },
+      data: { label: 'Start', type: 'start' } as BlockNodeData,
+    },
+  ])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null)
+  const [selectedNode, setSelectedNode] = useState<Node<BlockNodeData> | null>(null)
+  const reactFlowWrapper = useRef<HTMLDivElement>(null)
 
   const [isAnimating, setIsAnimating] = useState(false)
   const [animationProgress, setAnimationProgress] = useState(0)
@@ -649,7 +678,7 @@ export default function CurvesEditor() {
     }))
 
     setActions([...actions, ...newActions])
-    addToHistory([...actions, ...newActions])
+    saveToHistory([...actions, ...newActions])
   }
 
   const handleCanvasContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -743,25 +772,9 @@ export default function CurvesEditor() {
     }
   }
 
+  // Legacy action functions - kept for backward compatibility but not used with nodes
   const addAction = (blockType: any) => {
-    const newAction: ActionBlock = {
-      id: Date.now().toString(),
-      type: blockType.id,
-      label: blockType.label,
-      distance: 24,
-      power: 0.5,
-      angle: 90,
-      duration: 1,
-      position: 0.5,
-      targetX: robotX,
-      targetY: robotY,
-      targetHeading: robotHeading,
-      curveType: 'linear',
-      score: 0,
-    }
-    const newActions = [...actions, newAction]
-    saveToHistory(newActions)
-    setActions(newActions)
+    // This function is no longer used - blocks are now dragged and dropped
   }
 
   const saveToHistory = (newActions: ActionBlock[]) => {
@@ -987,6 +1000,97 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
     }
   }
 
+  // ReactFlow handlers
+  const onConnect = useCallback(
+    (params: Connection | Edge) => {
+      setEdges((eds) => addEdge({ ...params, animated: true, type: 'smoothstep', style: { stroke: '#3b82f6', strokeWidth: 2 } }, eds))
+    },
+    [setEdges]
+  )
+
+  const onNodeClick = useCallback((_event: React.MouseEvent, node: Node<BlockNodeData>) => {
+    setSelectedNode(node)
+  }, [])
+
+  const onDragOver = useCallback((event: DragEvent) => {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+  }, [])
+
+  const onDrop = useCallback(
+    (event: DragEvent) => {
+      event.preventDefault()
+
+      const blockType = event.dataTransfer.getData('application/reactflow')
+      if (!blockType || !reactFlowWrapper.current || !reactFlowInstance) return
+
+      const reactFlowBounds = reactFlowWrapper.current.getBoundingClientRect()
+      const position = reactFlowInstance.project({
+        x: event.clientX - reactFlowBounds.left,
+        y: event.clientY - reactFlowBounds.top,
+      })
+
+      const blockInfo = Object.values(BLOCK_TYPES)
+        .flat()
+        .find((b) => b.id === blockType)
+
+      if (!blockInfo) return
+
+      const newNode = {
+        id: `${blockType}-${Date.now()}`,
+        type: 'blockNode',
+        position,
+        data: {
+          label: blockInfo.label,
+          type: blockInfo.id,
+          distance: 24,
+          power: 0.5,
+          angle: 90,
+          duration: 1,
+          position: 0.5,
+          targetX: robotX,
+          targetY: robotY,
+          targetHeading: robotHeading,
+          curveType: 'linear' as 'linear' | 'spline' | 'bezier',
+          score: 0,
+        } as BlockNodeData,
+      }
+
+      setNodes((nds) => [...nds, newNode])
+    },
+    [reactFlowInstance, robotX, robotY, robotHeading, setNodes]
+  )
+
+  const onDragStart = (event: DragEvent, blockType: string) => {
+    event.dataTransfer.setData('application/reactflow', blockType)
+    event.dataTransfer.effectAllowed = 'move'
+  }
+
+  const deleteNode = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId))
+      setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
+      if (selectedNode?.id === nodeId) setSelectedNode(null)
+    },
+    [setNodes, setEdges, selectedNode]
+  )
+
+  const updateNodeData = useCallback(
+    (nodeId: string, updates: Partial<BlockNodeData>) => {
+      setNodes((nds) =>
+        nds.map((node) =>
+          node.id === nodeId
+            ? { ...node, data: { ...node.data, ...updates } }
+            : node
+        )
+      )
+      if (selectedNode?.id === nodeId) {
+        setSelectedNode((prev) => prev ? { ...prev, data: { ...prev.data, ...updates } } : null)
+      }
+    },
+    [setNodes, selectedNode]
+  )
+
   if (authLoading || loading || !project) {
     return (
       <div className="min-h-screen bg-black flex flex-col">
@@ -1170,10 +1274,11 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                       return (
                         <div key={block.id} className="group">
                           <Button
-                            onClick={() => addAction(block)}
+                            draggable
+                            onDragStart={(e) => onDragStart(e, block.id)}
                             variant="outline"
                             size="sm"
-                            className="w-full justify-start text-xs h-auto py-2 hover:bg-blue-500/10 hover:border-blue-500"
+                            className="w-full justify-start text-xs h-auto py-2 hover:bg-blue-500/10 hover:border-blue-500 cursor-grab active:cursor-grabbing"
                           >
                             <Icon className="h-3.5 w-3.5 mr-2 flex-shrink-0" />
                             <div className="flex flex-col items-start flex-1 min-w-0">
@@ -1537,77 +1642,51 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
           </Tabs>
         </div>
 
-        {/* Center: Timeline */}
-        <div className="flex-1 flex flex-col bg-zinc-950">
-          <ScrollArea className="h-full p-4">
-            <div className="space-y-2">
-              {actions.length === 0 && (
-                <div className="text-center py-12 text-zinc-500">
-                  <p className="text-sm">No actions yet. Add "Move to Position" or other blocks.</p>
-                  <p className="text-xs mt-2">Try adding waypoints to create smooth paths!</p>
-                </div>
-              )}
-              {actions.map((action, index) => (
-                <Card
-                  key={action.id}
-                  className={`bg-zinc-900 border-zinc-800 cursor-pointer hover:border-blue-500 transition-all ${
-                    selectedAction?.id === action.id ? 'border-blue-500 bg-zinc-800' : ''
-                  }`}
-                  onClick={() => setSelectedAction(action)}
-                >
-                  <CardContent className="p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3 flex-1">
-                      <div className="text-xs font-mono text-zinc-500 w-8">{index + 1}</div>
-                      <ChevronRight className="h-4 w-4 text-zinc-600" />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <div className="font-medium text-sm text-white">{action.label}</div>
-                          {action.score && action.score > 0 && (
-                            <div className="text-xs bg-yellow-600/20 text-yellow-400 px-1.5 py-0.5 rounded">
-                              +{action.score}
-                            </div>
-                          )}
-                        </div>
-                        <div className="text-xs text-zinc-500">
-                          {action.type === 'moveToPosition' || action.type === 'splineTo'
-                            ? `to (${action.targetX?.toFixed(1)}, ${action.targetY?.toFixed(1)}) @ ${action.targetHeading?.toFixed(0)}°`
-                            : action.type === 'turnToHeading'
-                            ? `${action.targetHeading}°`
-                            : action.type.includes('move') || action.type.includes('strafe')
-                            ? `${action.distance || 24}" @ ${(action.power || 0.5) * 100}%`
-                            : action.type.includes('turn')
-                            ? `${action.angle || 90}°`
-                            : action.type === 'wait'
-                            ? `${action.duration || 1}s`
-                            : 'Custom'}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={(e) => { e.stopPropagation(); cloneAction(action); }}
-                        className="h-8 w-8 p-0"
-                        title="Duplicate"
-                      >
-                        <Copy className="h-3.5 w-3.5 text-zinc-500 hover:text-blue-500" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={(e) => { e.stopPropagation(); deleteAction(action.id); }}
-                        className="h-8 w-8 p-0"
-                        title="Delete"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-zinc-500 hover:text-red-500" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+        {/* Center: Node Editor */}
+        <div className="flex-1 flex flex-col bg-zinc-950" ref={reactFlowWrapper}>
+          <div className="h-full w-full">
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onNodeClick={onNodeClick}
+              onInit={setReactFlowInstance}
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              nodeTypes={nodeTypes}
+              fitView
+              fitViewOptions={{ padding: 0.2 }}
+              className="bg-zinc-950"
+              defaultEdgeOptions={{
+                animated: true,
+                type: 'smoothstep',
+                style: { stroke: '#3b82f6', strokeWidth: 2 },
+              }}
+            >
+              <Background color="#27272a" gap={20} size={1} />
+              <Controls className="bg-zinc-900 border border-zinc-800" />
+              <MiniMap
+                className="bg-zinc-900 border border-zinc-800"
+                nodeColor={(node) => {
+                  if (node.type === 'startNode') return '#10b981'
+                  if (node.type === 'endNode') return '#ef4444'
+                  return '#3b82f6'
+                }}
+                maskColor="rgba(0, 0, 0, 0.6)"
+              />
+            </ReactFlow>
+          </div>
+          {nodes.length === 1 && (
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
+              <div className="text-zinc-500 text-sm">
+                <p className="font-semibold mb-2">Drag and Drop Blocks</p>
+                <p className="text-xs">Drag blocks from the left panel onto the canvas</p>
+                <p className="text-xs mt-1">Connect nodes by dragging from one handle to another</p>
+              </div>
             </div>
-          </ScrollArea>
+          )}
         </div>
 
         {/* Right: Config + Preview */}
@@ -1647,31 +1726,42 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
             </div>
           </div>
 
-          {selectedAction && (
+          {selectedNode && selectedNode.type === 'blockNode' && (
             <div className="border-b border-zinc-800 p-4 max-h-64 overflow-auto">
-              <h3 className="text-sm font-bold text-white mb-3">Configure: {selectedAction.label}</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-white">Configure: {selectedNode.data.label}</h3>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => deleteNode(selectedNode.id)}
+                  className="h-6 w-6 p-0"
+                  title="Delete Node"
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                </Button>
+              </div>
               <div className="space-y-3">
                 {/* Score Configuration */}
-                {(selectedAction.type === 'moveToPosition' || selectedAction.type === 'custom') && (
+                {(selectedNode.data.type === 'moveToPosition' || selectedNode.data.type === 'custom') && (
                   <div>
                     <Label className="text-xs text-zinc-400">Score Points</Label>
                     <Input
                       type="number"
-                      value={selectedAction.score || 0}
-                      onChange={(e) => updateAction(selectedAction.id, { score: parseInt(e.target.value) || 0 })}
+                      value={selectedNode.data.score || 0}
+                      onChange={(e) => updateNodeData(selectedNode.id, { score: parseInt(e.target.value) || 0 })}
                       className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
                     />
                   </div>
                 )}
 
-                {(selectedAction.type === 'moveToPosition' || selectedAction.type === 'splineTo') && (
+                {(selectedNode.data.type === 'moveToPosition' || selectedNode.data.type === 'splineTo') && (
                   <>
                     <div>
                       <Label className="text-xs text-zinc-400">Target X (inches)</Label>
                       <Input
                         type="number"
-                        value={selectedAction.targetX || 0}
-                        onChange={(e) => updateAction(selectedAction.id, { targetX: parseFloat(e.target.value) })}
+                        value={selectedNode.data.targetX || 0}
+                        onChange={(e) => updateNodeData(selectedNode.id, { targetX: parseFloat(e.target.value) })}
                         className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
                       />
                     </div>
@@ -1679,8 +1769,8 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                       <Label className="text-xs text-zinc-400">Target Y (inches)</Label>
                       <Input
                         type="number"
-                        value={selectedAction.targetY || 0}
-                        onChange={(e) => updateAction(selectedAction.id, { targetY: parseFloat(e.target.value) })}
+                        value={selectedNode.data.targetY || 0}
+                        onChange={(e) => updateNodeData(selectedNode.id, { targetY: parseFloat(e.target.value) })}
                         className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
                       />
                     </div>
@@ -1688,91 +1778,91 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                       <Label className="text-xs text-zinc-400">Target Heading (degrees)</Label>
                       <Input
                         type="number"
-                        value={selectedAction.targetHeading || 0}
-                        onChange={(e) => updateAction(selectedAction.id, { targetHeading: parseFloat(e.target.value) })}
+                        value={selectedNode.data.targetHeading || 0}
+                        onChange={(e) => updateNodeData(selectedNode.id, { targetHeading: parseFloat(e.target.value) })}
                         className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
                       />
                     </div>
                   </>
                 )}
-                {(selectedAction.type.includes('move') && !selectedAction.type.includes('To')) && (
+                {(selectedNode.data.type.includes('move') && !selectedNode.data.type.includes('To')) && (
                   <>
                     <div>
                       <Label className="text-xs text-zinc-400">Distance (inches)</Label>
                       <Input
                         type="number"
-                        value={selectedAction.distance || 24}
-                        onChange={(e) => updateAction(selectedAction.id, { distance: parseFloat(e.target.value) })}
+                        value={selectedNode.data.distance || 24}
+                        onChange={(e) => updateNodeData(selectedNode.id, { distance: parseFloat(e.target.value) })}
                         className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
                       />
                     </div>
                     <div>
                       <Label className="text-xs text-zinc-400">Power</Label>
                       <Slider
-                        value={[selectedAction.power || 0.5]}
-                        onValueChange={([v]) => updateAction(selectedAction.id, { power: v })}
+                        value={[selectedNode.data.power || 0.5]}
+                        onValueChange={([v]) => updateNodeData(selectedNode.id, { power: v })}
                         max={1}
                         step={0.1}
                         className="mt-2"
                       />
-                      <div className="text-xs text-zinc-500 mt-1">{((selectedAction.power || 0.5) * 100).toFixed(0)}%</div>
+                      <div className="text-xs text-zinc-500 mt-1">{((selectedNode.data.power || 0.5) * 100).toFixed(0)}%</div>
                     </div>
                   </>
                 )}
-                {(selectedAction.type.includes('turn') && selectedAction.type !== 'turnToHeading') && (
+                {(selectedNode.data.type.includes('turn') && selectedNode.data.type !== 'turnToHeading') && (
                   <div>
                     <Label className="text-xs text-zinc-400">Angle (degrees)</Label>
                     <Input
                       type="number"
-                      value={selectedAction.angle || 90}
-                      onChange={(e) => updateAction(selectedAction.id, { angle: parseFloat(e.target.value) })}
+                      value={selectedNode.data.angle || 90}
+                      onChange={(e) => updateNodeData(selectedNode.id, { angle: parseFloat(e.target.value) })}
                       className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
                     />
                   </div>
                 )}
-                {selectedAction.type === 'turnToHeading' && (
+                {selectedNode.data.type === 'turnToHeading' && (
                   <div>
                     <Label className="text-xs text-zinc-400">Target Heading (degrees)</Label>
                     <Input
                       type="number"
-                      value={selectedAction.targetHeading || 0}
-                      onChange={(e) => updateAction(selectedAction.id, { targetHeading: parseFloat(e.target.value) })}
+                      value={selectedNode.data.targetHeading || 0}
+                      onChange={(e) => updateNodeData(selectedNode.id, { targetHeading: parseFloat(e.target.value) })}
                       className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
                     />
                   </div>
                 )}
-                {selectedAction.type === 'wait' && (
+                {selectedNode.data.type === 'wait' && (
                   <div>
                     <Label className="text-xs text-zinc-400">Duration (seconds)</Label>
                     <Input
                       type="number"
                       step="0.1"
-                      value={selectedAction.duration || 1}
-                      onChange={(e) => updateAction(selectedAction.id, { duration: parseFloat(e.target.value) })}
+                      value={selectedNode.data.duration || 1}
+                      onChange={(e) => updateNodeData(selectedNode.id, { duration: parseFloat(e.target.value) })}
                       className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
                     />
                   </div>
                 )}
-                {selectedAction.type.startsWith('servo') && (
+                {selectedNode.data.type.startsWith('servo') && (
                   <div>
                     <Label className="text-xs text-zinc-400">Position</Label>
                     <Slider
-                      value={[selectedAction.position || 0.5]}
-                      onValueChange={([v]) => updateAction(selectedAction.id, { position: v })}
+                      value={[selectedNode.data.position || 0.5]}
+                      onValueChange={([v]) => updateNodeData(selectedNode.id, { position: v })}
                       max={1}
                       step={0.1}
                       className="mt-2"
                     />
-                    <div className="text-xs text-zinc-500 mt-1">{((selectedAction.position || 0.5) * 100).toFixed(0)}%</div>
+                    <div className="text-xs text-zinc-500 mt-1">{((selectedNode.data.position || 0.5) * 100).toFixed(0)}%</div>
                   </div>
                 )}
-                {(selectedAction.type === 'setServo' || selectedAction.type.startsWith('servo') || selectedAction.type === 'continuousServo') && (
+                {(selectedNode.data.type === 'setServo' || selectedNode.data.type.startsWith('servo') || selectedNode.data.type === 'continuousServo') && (
                   <>
                     <div>
                       <Label className="text-xs text-zinc-400">Select Servo</Label>
                       <Select
-                        value={selectedAction.servoName || servos[0]?.name}
-                        onValueChange={(v) => updateAction(selectedAction.id, { servoName: v })}
+                        value={selectedNode.data.servoName || servos[0]?.name}
+                        onValueChange={(v) => updateNodeData(selectedNode.id, { servoName: v })}
                       >
                         <SelectTrigger className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm">
                           <SelectValue />
@@ -1787,26 +1877,26 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                     <div>
                       <Label className="text-xs text-zinc-400">Position</Label>
                       <Slider
-                        value={[selectedAction.position || 0.5]}
+                        value={[selectedNode.data.position || 0.5]}
                         onValueChange={([v]) => {
-                          updateAction(selectedAction.id, { position: v })
-                          setServoPositions({ ...servoPositions, [selectedAction.servoName || servos[0]?.name]: v })
+                          updateNodeData(selectedNode.id, { position: v })
+                          setServoPositions({ ...servoPositions, [selectedNode.data.servoName || servos[0]?.name]: v })
                         }}
                         max={1}
                         step={0.01}
                         className="mt-2"
                       />
-                      <div className="text-xs text-zinc-500 mt-1">{((selectedAction.position || 0.5) * 100).toFixed(0)}%</div>
+                      <div className="text-xs text-zinc-500 mt-1">{((selectedNode.data.position || 0.5) * 100).toFixed(0)}%</div>
                     </div>
                   </>
                 )}
-                {(selectedAction.type === 'runMotor' || selectedAction.type === 'setMotorPower') && (
+                {(selectedNode.data.type === 'runMotor' || selectedNode.data.type === 'setMotorPower') && (
                   <>
                     <div>
                       <Label className="text-xs text-zinc-400">Select Motor</Label>
                       <Select
-                        value={selectedAction.motorName || motors[4]?.name}
-                        onValueChange={(v) => updateAction(selectedAction.id, { motorName: v })}
+                        value={selectedNode.data.motorName || motors[4]?.name}
+                        onValueChange={(v) => updateNodeData(selectedNode.id, { motorName: v })}
                       >
                         <SelectTrigger className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm">
                           <SelectValue />
@@ -1821,48 +1911,48 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                     <div>
                       <Label className="text-xs text-zinc-400">Power</Label>
                       <Slider
-                        value={[selectedAction.power || 0.5]}
+                        value={[selectedNode.data.power || 0.5]}
                         onValueChange={([v]) => {
-                          updateAction(selectedAction.id, { power: v })
-                          setMotorSpeeds({ ...motorSpeeds, [selectedAction.motorName || motors[0]?.name]: v })
+                          updateNodeData(selectedNode.id, { power: v })
+                          setMotorSpeeds({ ...motorSpeeds, [selectedNode.data.motorName || motors[0]?.name]: v })
                         }}
                         max={1}
                         step={0.1}
                         className="mt-2"
                       />
-                      <div className="text-xs text-zinc-500 mt-1">{((selectedAction.power || 0.5) * 100).toFixed(0)}%</div>
+                      <div className="text-xs text-zinc-500 mt-1">{((selectedNode.data.power || 0.5) * 100).toFixed(0)}%</div>
                     </div>
                   </>
                 )}
-                {(selectedAction.type === 'loop') && (
+                {(selectedNode.data.type === 'loop') && (
                   <div>
                     <Label className="text-xs text-zinc-400">Loop Count</Label>
                     <Input
                       type="number"
-                      value={selectedAction.loopCount || 1}
-                      onChange={(e) => updateAction(selectedAction.id, { loopCount: parseInt(e.target.value) || 1 })}
+                      value={selectedNode.data.loopCount || 1}
+                      onChange={(e) => updateNodeData(selectedNode.id, { loopCount: parseInt(e.target.value) || 1 })}
                       className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
                     />
                   </div>
                 )}
-                {(selectedAction.type === 'waitUntil' || selectedAction.type === 'waitForSensor' || selectedAction.type === 'if') && (
+                {(selectedNode.data.type === 'waitUntil' || selectedNode.data.type === 'waitForSensor' || selectedNode.data.type === 'if') && (
                   <div>
                     <Label className="text-xs text-zinc-400">Condition</Label>
                     <Input
                       type="text"
-                      value={selectedAction.condition || ''}
-                      onChange={(e) => updateAction(selectedAction.id, { condition: e.target.value })}
+                      value={selectedNode.data.condition || ''}
+                      onChange={(e) => updateNodeData(selectedNode.id, { condition: e.target.value })}
                       placeholder="e.g., sensor > 10"
                       className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
                     />
                   </div>
                 )}
-                {selectedAction.type === 'custom' && (
+                {selectedNode.data.type === 'custom' && (
                   <div>
                     <Label className="text-xs text-zinc-400">Java Code</Label>
                     <textarea
-                      value={selectedAction.customCode || ''}
-                      onChange={(e) => updateAction(selectedAction.id, { customCode: e.target.value })}
+                      value={selectedNode.data.customCode || ''}
+                      onChange={(e) => updateNodeData(selectedNode.id, { customCode: e.target.value })}
                       placeholder="// Your code here"
                       className="w-full h-32 mt-1 p-2 text-xs font-mono bg-zinc-800 border border-zinc-700 rounded text-white"
                     />
@@ -1936,11 +2026,19 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
               </div>
             </div>
             <div className="mt-2 text-xs text-zinc-500 text-center">
-              Actions: {actions.length}
+              Nodes: {nodes.filter(n => n.type === 'blockNode').length} | Connections: {edges.length}
             </div>
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+export default function CurvesEditor() {
+  return (
+    <ReactFlowProvider>
+      <CurvesEditorInner />
+    </ReactFlowProvider>
   )
 }
