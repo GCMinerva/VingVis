@@ -297,6 +297,12 @@ function CurvesEditorInner() {
   const [animationProgress, setAnimationProgress] = useState(0)
   const [animationSpeed, setAnimationSpeed] = useState(1)
 
+  // Node preview states
+  const [isNodePreviewing, setIsNodePreviewing] = useState(false)
+  const [currentPreviewNodeIndex, setCurrentPreviewNodeIndex] = useState(0)
+  const [nodePreviewSpeed, setNodePreviewSpeed] = useState(1)
+  const nodePreviewTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
   const [robotX, setRobotX] = useState(72)
   const [robotY, setRobotY] = useState(72)
   const [robotHeading, setRobotHeading] = useState(0)
@@ -646,6 +652,36 @@ function CurvesEditorInner() {
     })
 
     return waypoints
+  }
+
+  // Get nodes in execution order by following edges from StartNode
+  const getNodesInExecutionOrder = (): Node<BlockNodeData>[] => {
+    const orderedNodes: Node<BlockNodeData>[] = []
+    const visited = new Set<string>()
+
+    // Find the start node
+    const startNode = nodes.find(node => node.type === 'startNode')
+    if (!startNode) return orderedNodes
+
+    let currentNodeId: string | null = startNode.id
+
+    // Follow edges from start to end
+    while (currentNodeId && !visited.has(currentNodeId)) {
+      const currentNode = nodes.find(node => node.id === currentNodeId)
+      if (!currentNode) break
+
+      // Skip start and end nodes in the preview
+      if (currentNode.type !== 'startNode' && currentNode.type !== 'endNode') {
+        orderedNodes.push(currentNode)
+      }
+      visited.add(currentNodeId)
+
+      // Find the next node by following edges
+      const outgoingEdge = edges.find(edge => edge.source === currentNodeId)
+      currentNodeId = outgoingEdge?.target || null
+    }
+
+    return orderedNodes
   }
 
   const calculatePath = () => {
@@ -1151,6 +1187,102 @@ function CurvesEditorInner() {
     }
     setIsAnimating(false)
   }
+
+  // Node preview functions
+  const startNodePreview = () => {
+    const orderedNodes = getNodesInExecutionOrder()
+    if (orderedNodes.length === 0) return
+
+    setIsNodePreviewing(true)
+    setCurrentPreviewNodeIndex(0)
+    zoomToNode(orderedNodes[0])
+  }
+
+  const stopNodePreview = () => {
+    setIsNodePreviewing(false)
+    setCurrentPreviewNodeIndex(0)
+    if (nodePreviewTimeoutRef.current) {
+      clearTimeout(nodePreviewTimeoutRef.current)
+      nodePreviewTimeoutRef.current = null
+    }
+    // Clear node selection
+    setNodes((nds) =>
+      nds.map((n) => ({
+        ...n,
+        selected: false,
+      }))
+    )
+    // Fit view to show all nodes
+    if (reactFlowInstance) {
+      reactFlowInstance.fitView({ padding: 0.2, duration: 800 })
+    }
+  }
+
+  const nextPreviewNode = () => {
+    const orderedNodes = getNodesInExecutionOrder()
+    if (orderedNodes.length === 0) return
+
+    const nextIndex = currentPreviewNodeIndex + 1
+    if (nextIndex < orderedNodes.length) {
+      setCurrentPreviewNodeIndex(nextIndex)
+      zoomToNode(orderedNodes[nextIndex])
+    } else {
+      // Loop back to first node
+      setCurrentPreviewNodeIndex(0)
+      zoomToNode(orderedNodes[0])
+    }
+  }
+
+  const previousPreviewNode = () => {
+    const orderedNodes = getNodesInExecutionOrder()
+    if (orderedNodes.length === 0) return
+
+    const prevIndex = currentPreviewNodeIndex - 1
+    if (prevIndex >= 0) {
+      setCurrentPreviewNodeIndex(prevIndex)
+      zoomToNode(orderedNodes[prevIndex])
+    } else {
+      // Loop to last node
+      const lastIndex = orderedNodes.length - 1
+      setCurrentPreviewNodeIndex(lastIndex)
+      zoomToNode(orderedNodes[lastIndex])
+    }
+  }
+
+  const zoomToNode = (node: Node<BlockNodeData>) => {
+    if (!reactFlowInstance) return
+
+    // Select the node to highlight it
+    setNodes((nds) =>
+      nds.map((n) => ({
+        ...n,
+        selected: n.id === node.id,
+      }))
+    )
+
+    // Zoom to the node with smooth animation
+    reactFlowInstance.setCenter(
+      node.position.x + 150, // Offset to center the node (node width ~300px)
+      node.position.y + 100, // Offset to center the node (node height ~200px)
+      { zoom: 1.2, duration: 800 }
+    )
+  }
+
+  // Auto-advance node preview
+  useEffect(() => {
+    if (!isNodePreviewing) return
+
+    const delay = 2000 / nodePreviewSpeed // Base delay of 2 seconds adjusted by speed
+    nodePreviewTimeoutRef.current = setTimeout(() => {
+      nextPreviewNode()
+    }, delay)
+
+    return () => {
+      if (nodePreviewTimeoutRef.current) {
+        clearTimeout(nodePreviewTimeoutRef.current)
+      }
+    }
+  }, [isNodePreviewing, currentPreviewNodeIndex, nodePreviewSpeed]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const resetPosition = () => {
     setRobotX(72)
@@ -2223,6 +2355,82 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
             >
               <Background color="#27272a" gap={20} size={1} />
               <Controls className="bg-zinc-900 border border-zinc-800" />
+
+              {/* Node Preview Controls */}
+              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-10">
+                <Card className="bg-zinc-900/95 border-zinc-800 backdrop-blur">
+                  <CardContent className="p-3">
+                    <div className="flex items-center gap-3">
+                      <div className="text-xs font-semibold text-zinc-400 mr-2">
+                        Node Preview
+                      </div>
+
+                      {!isNodePreviewing ? (
+                        <Button
+                          size="sm"
+                          onClick={startNodePreview}
+                          className="h-7 px-3 bg-blue-600 hover:bg-blue-700 text-white"
+                          disabled={getNodesInExecutionOrder().length === 0}
+                        >
+                          <Play className="h-3 w-3 mr-1" />
+                          Start
+                        </Button>
+                      ) : (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={previousPreviewNode}
+                            className="h-7 px-2 border-zinc-700"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+
+                          <div className="text-xs text-zinc-400 min-w-[60px] text-center">
+                            {currentPreviewNodeIndex + 1} / {getNodesInExecutionOrder().length}
+                          </div>
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={nextPreviewNode}
+                            className="h-7 px-2 border-zinc-700"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            onClick={stopNodePreview}
+                            className="h-7 px-3 bg-red-600 hover:bg-red-700 text-white ml-2"
+                          >
+                            <SkipBack className="h-3 w-3 mr-1" />
+                            Stop
+                          </Button>
+                        </>
+                      )}
+
+                      {isNodePreviewing && (
+                        <>
+                          <div className="h-4 w-px bg-zinc-700 mx-1" />
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs text-zinc-400">Speed</Label>
+                            <Slider
+                              value={[nodePreviewSpeed]}
+                              onValueChange={(value) => setNodePreviewSpeed(value[0])}
+                              min={0.5}
+                              max={2}
+                              step={0.5}
+                              className="w-20"
+                            />
+                            <span className="text-xs text-zinc-500 min-w-[32px]">{nodePreviewSpeed}x</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
               <MiniMap
                 className="bg-zinc-900 border border-zinc-800"
                 nodeColor={(node) => {
