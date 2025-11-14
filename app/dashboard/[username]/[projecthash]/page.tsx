@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
 import { Navbar } from "@/components/navbar"
+import { MathTools } from "@/components/math-tools"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -48,9 +49,8 @@ import {
   Undo2,
   Redo2,
   Copy,
-  Trophy,
-  Activity,
-  TrendingUp,
+  Grid3x3,
+  Compass,
 } from "lucide-react"
 
 type Project = {
@@ -81,14 +81,6 @@ type ActionBlock = {
   score?: number
   condition?: string
   loopCount?: number
-}
-
-type TelemetryData = {
-  totalDistance: number
-  estimatedTime: number
-  averageSpeed: number
-  currentScore: number
-  actionCount: number
 }
 
 type Motor = {
@@ -237,6 +229,12 @@ export default function CurvesEditor() {
   const [saving, setSaving] = useState(false)
   const [isGuest, setIsGuest] = useState(false)
   const [showRuler, setShowRuler] = useState(false)
+  const [showProtractor, setShowProtractor] = useState(false)
+  const [showGrid, setShowGrid] = useState(false)
+  const [gridSize, setGridSize] = useState(24)
+  const [protractorLockToRobot, setProtractorLockToRobot] = useState(false)
+  const [selectedField, setSelectedField] = useState<'intothedeep' | 'centerstage' | 'decode'>('intothedeep')
+  const [fieldImage, setFieldImage] = useState<HTMLImageElement | null>(null)
   const [activeTab, setActiveTab] = useState<'movement' | 'mechanisms' | 'sensors' | 'control'>('movement')
   const [pathMode, setPathMode] = useState<'roadrunner' | 'pedropathing' | 'simple'>('simple')
   const [blockSearchQuery, setBlockSearchQuery] = useState('')
@@ -255,13 +253,10 @@ export default function CurvesEditor() {
   const [isDraggingRobot, setIsDraggingRobot] = useState(false)
   const [path, setPath] = useState<{x: number, y: number, heading: number}[]>([])
 
-  // Waypoint dragging states
-  const [draggingWaypointIndex, setDraggingWaypointIndex] = useState<number | null>(null)
-  const [hoverWaypointIndex, setHoverWaypointIndex] = useState<number | null>(null)
-  const [isAddingWaypoint, setIsAddingWaypoint] = useState(false)
   const [isDrawingMode, setIsDrawingMode] = useState(false)
   const [isDrawing, setIsDrawing] = useState(false)
   const [lastDrawnPoint, setLastDrawnPoint] = useState<{ x: number; y: number } | null>(null)
+  const [drawnPoints, setDrawnPoints] = useState<{x: number, y: number}[]>([])
 
   const [motors, setMotors] = useState<Motor[]>([
     { name: 'motorFL', port: 0, reversed: false },
@@ -285,10 +280,6 @@ export default function CurvesEditor() {
   const [actionHistory, setActionHistory] = useState<ActionBlock[][]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
 
-  // Score and telemetry
-  const [currentScore, setCurrentScore] = useState(0)
-  const [showTelemetry, setShowTelemetry] = useState(true)
-
   // Servo/Motor preview states
   const [servoPositions, setServoPositions] = useState<{[key: string]: number}>({})
   const [motorSpeeds, setMotorSpeeds] = useState<{[key: string]: number}>({})
@@ -298,11 +289,21 @@ export default function CurvesEditor() {
       // Using sessionStorage instead of localStorage for better security
       const guestMode = sessionStorage.getItem('guestMode') === 'true'
       setIsGuest(guestMode)
-      if (!authLoading && !user && !guestMode) {
-        router.push("/login")
-      }
+      // Authentication disabled - allow access without login
     }
   }, [user, authLoading, router])
+
+  // Load field image when selected field changes
+  useEffect(() => {
+    const img = new Image()
+    img.src = `/fields/${selectedField}.webp`
+    img.onload = () => {
+      setFieldImage(img)
+    }
+    img.onerror = () => {
+      console.error('Failed to load field image:', selectedField)
+    }
+  }, [selectedField])
 
   useEffect(() => {
     if (params.projecthash) {
@@ -323,61 +324,34 @@ export default function CurvesEditor() {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     const scale = canvas.width / 144
 
-    // Background
-    ctx.fillStyle = '#1a1a1a'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    // Draw field background image if loaded
+    if (fieldImage) {
+      ctx.drawImage(fieldImage, 0, 0, canvas.width, canvas.height)
+    } else {
+      // Fallback background if image not loaded
+      ctx.fillStyle = '#1a1a1a'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    // Grid
-    ctx.strokeStyle = '#2a2a2a'
-    ctx.lineWidth = 1
-    for (let i = 0; i <= 6; i++) {
-      const pos = i * 24 * scale
-      ctx.beginPath()
-      ctx.moveTo(pos, 0)
-      ctx.lineTo(pos, canvas.height)
-      ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(0, pos)
-      ctx.lineTo(canvas.width, pos)
-      ctx.stroke()
+      // Grid
+      ctx.strokeStyle = '#2a2a2a'
+      ctx.lineWidth = 1
+      for (let i = 0; i <= 6; i++) {
+        const pos = i * 24 * scale
+        ctx.beginPath()
+        ctx.moveTo(pos, 0)
+        ctx.lineTo(pos, canvas.height)
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.moveTo(0, pos)
+        ctx.lineTo(canvas.width, pos)
+        ctx.stroke()
+      }
+
+      // Border
+      ctx.strokeStyle = '#555'
+      ctx.lineWidth = 3
+      ctx.strokeRect(0, 0, canvas.width, canvas.height)
     }
-
-    // Tile numbers
-    ctx.fillStyle = '#444'
-    ctx.font = '10px monospace'
-    for (let i = 1; i < 6; i++) {
-      const pos = i * 24 * scale
-      ctx.fillText(`${i * 24}"`, pos - 15, 12)
-      ctx.fillText(`${i * 24}"`, 5, pos + 4)
-    }
-
-    // Border
-    ctx.strokeStyle = '#555'
-    ctx.lineWidth = 3
-    ctx.strokeRect(0, 0, canvas.width, canvas.height)
-
-    // Starting zones
-    const zoneSize = 24 * scale
-    ctx.fillStyle = 'rgba(59, 130, 246, 0.15)'
-    ctx.fillRect(0, 0, zoneSize, zoneSize)
-    ctx.fillRect(canvas.width - zoneSize, 0, zoneSize, zoneSize)
-    ctx.fillStyle = 'rgba(239, 68, 68, 0.15)'
-    ctx.fillRect(0, canvas.height - zoneSize, zoneSize, zoneSize)
-    ctx.fillRect(canvas.width - zoneSize, canvas.height - zoneSize, zoneSize, zoneSize)
-
-    // Center lines
-    ctx.strokeStyle = '#333'
-    ctx.lineWidth = 2
-    ctx.setLineDash([10, 10])
-    ctx.beginPath()
-    ctx.moveTo(canvas.width / 2, 0)
-    ctx.lineTo(canvas.width / 2, canvas.height)
-    ctx.stroke()
-    ctx.beginPath()
-    ctx.moveTo(0, canvas.height / 2)
-    ctx.lineTo(canvas.width, canvas.height / 2)
-    ctx.stroke()
-    ctx.setLineDash([])
 
     // Draw path
     if (path.length > 1) {
@@ -394,40 +368,6 @@ export default function CurvesEditor() {
       })
       ctx.stroke()
       ctx.globalAlpha = 1
-
-      // Waypoints
-      const waypoints = getWaypoints()
-      waypoints.forEach((point, i) => {
-        const x = (point.x / 144) * canvas.width
-        const y = (point.y / 144) * canvas.height
-        const isHovered = hoverWaypointIndex === i
-        const isDragging = draggingWaypointIndex === i
-        const radius = isHovered || isDragging ? 7 : 5
-
-        // Outer glow for hover/drag
-        if (isHovered || isDragging) {
-          ctx.fillStyle = i === 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(59, 130, 246, 0.3)'
-          ctx.beginPath()
-          ctx.arc(x, y, radius + 3, 0, Math.PI * 2)
-          ctx.fill()
-        }
-
-        // Waypoint circle
-        ctx.fillStyle = i === 0 ? '#10b981' : '#3b82f6'
-        ctx.beginPath()
-        ctx.arc(x, y, radius, 0, Math.PI * 2)
-        ctx.fill()
-
-        // White border for better visibility
-        ctx.strokeStyle = '#fff'
-        ctx.lineWidth = 2
-        ctx.stroke()
-
-        // Label waypoints
-        ctx.fillStyle = '#fff'
-        ctx.font = '10px bold monospace'
-        ctx.fillText(`${i}`, x + 10, y - 10)
-      })
 
       // Animated portion
       if (isAnimating && animationProgress > 0) {
@@ -466,6 +406,30 @@ export default function CurvesEditor() {
 
     drawRobot(ctx, robotX, robotY, robotHeading, scale)
 
+    // Draw current drawing path
+    if (isDrawing && drawnPoints.length > 0) {
+      ctx.strokeStyle = '#fbbf24'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      drawnPoints.forEach((point, i) => {
+        const x = (point.x / 144) * canvas.width
+        const y = (point.y / 144) * canvas.height
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      })
+      ctx.stroke()
+
+      // Draw points
+      drawnPoints.forEach((point) => {
+        const x = (point.x / 144) * canvas.width
+        const y = (point.y / 144) * canvas.height
+        ctx.fillStyle = '#fbbf24'
+        ctx.beginPath()
+        ctx.arc(x, y, 3, 0, Math.PI * 2)
+        ctx.fill()
+      })
+    }
+
     // Ruler
     if (showRuler) {
       ctx.strokeStyle = '#fbbf24'
@@ -481,7 +445,7 @@ export default function CurvesEditor() {
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves, hoverWaypointIndex, draggingWaypointIndex])
+  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves, fieldImage, isDrawing, drawnPoints])
 
   useEffect(() => {
     drawField()
@@ -596,67 +560,6 @@ export default function CurvesEditor() {
     }
   }
 
-  // Helper function to find waypoint at position
-  const findWaypointAtPosition = (x: number, y: number, canvas: HTMLCanvasElement): number | null => {
-    const waypoints = getWaypoints()
-    const threshold = 12 // pixels
-
-    for (let i = waypoints.length - 1; i >= 0; i--) {
-      const wx = (waypoints[i].x / 144) * canvas.width
-      const wy = (waypoints[i].y / 144) * canvas.height
-      const canvasX = (x / 144) * canvas.width
-      const canvasY = (y / 144) * canvas.height
-      const distance = Math.sqrt(Math.pow(canvasX - wx, 2) + Math.pow(canvasY - wy, 2))
-
-      if (distance < threshold) {
-        return i
-      }
-    }
-    return null
-  }
-
-  // Update waypoint position by index
-  const updateWaypointPosition = (index: number, x: number, y: number) => {
-    if (index === 0) {
-      // Update robot start position
-      setRobotX(x)
-      setRobotY(y)
-    } else {
-      // Update action block
-      const actionIndex = index - 1
-      if (actionIndex < actions.length) {
-        const action = actions[actionIndex]
-        if (action.type === 'moveToPosition' || action.type === 'splineTo') {
-          updateAction(action.id, { targetX: x, targetY: y })
-        }
-      }
-    }
-  }
-
-  // Delete waypoint by index
-  const deleteWaypoint = (index: number) => {
-    if (index === 0) return // Can't delete start position
-
-    const actionIndex = index - 1
-    if (actionIndex < actions.length) {
-      deleteAction(actions[actionIndex].id)
-    }
-  }
-
-  // Add waypoint at position
-  const addWaypointAtPosition = (x: number, y: number) => {
-    const newAction: ActionBlock = {
-      id: Date.now().toString(),
-      type: 'moveToPosition',
-      label: 'Move to Position',
-      targetX: x,
-      targetY: y,
-      targetHeading: robotHeading,
-      curveType: useCurves ? 'spline' : 'linear',
-    }
-    setActions([...actions, newAction])
-  }
-
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -669,36 +572,15 @@ export default function CurvesEditor() {
     if (isDrawingMode) {
       setIsDrawing(true)
       setLastDrawnPoint({ x, y })
-      addWaypointAtPosition(x, y)
+      setDrawnPoints([{ x, y }])
       return
     }
 
-    // Check if clicking on a waypoint
-    const waypointIndex = findWaypointAtPosition(x, y, canvas)
-
-    if (waypointIndex !== null) {
-      if (e.button === 2) {
-        // Right-click to delete
-        e.preventDefault()
-        deleteWaypoint(waypointIndex)
-        return
-      }
-      // Left-click to drag
-      setDraggingWaypointIndex(waypointIndex)
-      return
-    }
-
-    // Check if clicking on robot (for backward compatibility)
+    // Check if clicking on robot
     const distance = Math.sqrt(Math.pow(x - robotX, 2) + Math.pow(y - robotY, 2))
     if (distance < 15) {
       setIsDraggingRobot(true)
       return
-    }
-
-    // Shift+click or Ctrl+click to add waypoint
-    if (e.shiftKey || e.ctrlKey) {
-      addWaypointAtPosition(x, y)
-      setIsAddingWaypoint(true)
     }
   }
 
@@ -710,26 +592,14 @@ export default function CurvesEditor() {
     const x = Math.max(9, Math.min(135, ((e.clientX - rect.left) / rect.width) * 144))
     const y = Math.max(9, Math.min(135, ((e.clientY - rect.top) / rect.height) * 144))
 
-    // Drawing mode - continuously add waypoints
+    // Drawing mode - continuously add points
     if (isDrawing && lastDrawnPoint) {
-      const distance = Math.sqrt(Math.pow(x - lastDrawnPoint.x, 2) + Math.pow(y - lastDrawnPoint.y, 2))
-      // Add waypoint every 10 inches of distance
-      if (distance > 10) {
-        addWaypointAtPosition(x, y)
+      const dist = Math.sqrt(Math.pow(x - lastDrawnPoint.x, 2) + Math.pow(y - lastDrawnPoint.y, 2))
+      // Add point every 5 inches of distance
+      if (dist > 5) {
+        setDrawnPoints(prev => [...prev, { x, y }])
         setLastDrawnPoint({ x, y })
       }
-      return
-    }
-
-    // Update hover state (only when not dragging)
-    if (!draggingWaypointIndex && !isDraggingRobot) {
-      const waypointIndex = findWaypointAtPosition(x, y, canvas)
-      setHoverWaypointIndex(waypointIndex)
-    }
-
-    // Handle dragging
-    if (draggingWaypointIndex !== null) {
-      updateWaypointPosition(draggingWaypointIndex, x, y)
       return
     }
 
@@ -741,11 +611,45 @@ export default function CurvesEditor() {
   }
 
   const handleCanvasMouseUp = () => {
+    // Convert drawn points to actions when drawing ends
+    if (isDrawing && drawnPoints.length > 1) {
+      convertDrawnPointsToActions()
+    }
+
     setIsDraggingRobot(false)
-    setDraggingWaypointIndex(null)
-    setIsAddingWaypoint(false)
     setIsDrawing(false)
     setLastDrawnPoint(null)
+    setDrawnPoints([])
+  }
+
+  const convertDrawnPointsToActions = () => {
+    if (drawnPoints.length < 2) return
+
+    // Simplify points - take every Nth point to avoid too many actions
+    const simplified: {x: number, y: number}[] = []
+    const step = Math.max(1, Math.floor(drawnPoints.length / 10)) // Max 10 waypoints
+
+    for (let i = 0; i < drawnPoints.length; i += step) {
+      simplified.push(drawnPoints[i])
+    }
+    // Always include the last point
+    if (simplified[simplified.length - 1] !== drawnPoints[drawnPoints.length - 1]) {
+      simplified.push(drawnPoints[drawnPoints.length - 1])
+    }
+
+    // Convert to moveToPosition actions
+    const newActions: ActionBlock[] = simplified.map((point, index) => ({
+      id: `${Date.now()}_${index}`,
+      type: 'moveToPosition',
+      label: 'Move to Position',
+      targetX: point.x,
+      targetY: point.y,
+      targetHeading: robotHeading,
+      curveType: useCurves ? 'spline' : 'linear',
+    }))
+
+    setActions([...actions, ...newActions])
+    addToHistory([...actions, ...newActions])
   }
 
   const handleCanvasContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -753,28 +657,14 @@ export default function CurvesEditor() {
   }
 
   const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (isDrawingMode) return // Don't add on double-click in drawing mode
-
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const rect = canvas.getBoundingClientRect()
-    const x = ((e.clientX - rect.left) / rect.width) * 144
-    const y = ((e.clientY - rect.top) / rect.height) * 144
-
-    // Check if double-clicking on a waypoint (to avoid adding duplicate)
-    const waypointIndex = findWaypointAtPosition(x, y, canvas)
-    if (waypointIndex !== null) return
-
-    // Add waypoint at double-click position
-    addWaypointAtPosition(x, y)
+    // Double-click functionality removed
   }
 
   const loadGuestProject = () => {
     try {
       setLoading(true)
-      // Using sessionStorage instead of localStorage for better security
-      const guestProjects = sessionStorage.getItem('guestProjects')
+      // Load from localStorage (same as dashboard)
+      const guestProjects = localStorage.getItem('guestProjects')
       if (guestProjects) {
         const projects = JSON.parse(guestProjects)
         const foundProject = projects.find((p: any) => p.project_hash === params.projecthash)
@@ -784,9 +674,11 @@ export default function CurvesEditor() {
             setActions(foundProject.workflow_data.actions)
           }
         } else {
+          // Project not found, redirect to dashboard
           router.push('/dashboard')
         }
       } else {
+        // No guest projects, redirect to dashboard
         router.push('/dashboard')
       }
     } catch (err: any) {
@@ -825,8 +717,8 @@ export default function CurvesEditor() {
     try {
       setSaving(true)
       if (isGuest) {
-        // Using sessionStorage instead of localStorage for better security
-        const guestProjects = sessionStorage.getItem('guestProjects')
+        // Save to localStorage (same as dashboard)
+        const guestProjects = localStorage.getItem('guestProjects')
         if (guestProjects) {
           const projects = JSON.parse(guestProjects)
           const updatedProjects = projects.map((p: any) => {
@@ -835,7 +727,7 @@ export default function CurvesEditor() {
             }
             return p
           })
-          sessionStorage.setItem('guestProjects', JSON.stringify(updatedProjects))
+          localStorage.setItem('guestProjects', JSON.stringify(updatedProjects))
         }
       } else {
         const { error } = await supabase
@@ -915,31 +807,6 @@ export default function CurvesEditor() {
     setActions(newActions)
     if (selectedAction?.id === id) {
       setSelectedAction({ ...selectedAction, ...updates })
-    }
-  }
-
-  // Calculate telemetry data
-  const calculateTelemetry = (): TelemetryData => {
-    const waypoints = getWaypoints()
-    let totalDistance = 0
-
-    for (let i = 0; i < waypoints.length - 1; i++) {
-      const dx = waypoints[i + 1].x - waypoints[i].x
-      const dy = waypoints[i + 1].y - waypoints[i].y
-      totalDistance += Math.sqrt(dx * dx + dy * dy)
-    }
-
-    const averageSpeed = 24 // inches per second (typical robot speed)
-    const estimatedTime = totalDistance / averageSpeed
-
-    const totalScore = actions.reduce((sum, action) => sum + (action.score || 0), 0)
-
-    return {
-      totalDistance,
-      estimatedTime,
-      averageSpeed,
-      currentScore: totalScore,
-      actionCount: actions.length,
     }
   }
 
@@ -1140,13 +1007,6 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
         <div className="flex items-center gap-3">
           <h1 className="text-base font-bold text-white">{project.name}</h1>
 
-          {/* Score Display */}
-          <div className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-yellow-600/20 to-orange-600/20 border border-yellow-600/30 rounded">
-            <Trophy className="h-4 w-4 text-yellow-500" />
-            <span className="text-sm font-bold text-yellow-400">{calculateTelemetry().currentScore}</span>
-            <span className="text-xs text-yellow-600">pts</span>
-          </div>
-
           <div className="flex items-center gap-1">
             {!isAnimating ? (
               <Button onClick={startAnimation} size="sm" variant="default" disabled={actions.length === 0}>
@@ -1165,7 +1025,15 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
             </Button>
             <Button onClick={() => setShowRuler(!showRuler)} size="sm" variant="ghost">
               <Ruler className="h-4 w-4 mr-2" />
-              {showRuler ? 'Hide' : 'Show'} Ruler
+              Ruler
+            </Button>
+            <Button onClick={() => setShowProtractor(!showProtractor)} size="sm" variant="ghost">
+              <Compass className="h-4 w-4 mr-2" />
+              Protractor
+            </Button>
+            <Button onClick={() => setShowGrid(!showGrid)} size="sm" variant="ghost">
+              <Grid3x3 className="h-4 w-4 mr-2" />
+              Grid
             </Button>
             <Button
               onClick={() => setIsDrawingMode(!isDrawingMode)}
@@ -1173,7 +1041,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
               variant={isDrawingMode ? 'default' : 'ghost'}
             >
               <Pencil className="h-4 w-4 mr-2" />
-              {isDrawingMode ? 'Exit Draw' : 'Draw Mode'}
+              {isDrawingMode ? 'Exit Draw' : 'Draw'}
             </Button>
             <Button onClick={undo} disabled={historyIndex <= 0} size="sm" variant="ghost">
               <Undo2 className="h-4 w-4" />
@@ -1184,10 +1052,19 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button onClick={() => setShowTelemetry(!showTelemetry)} size="sm" variant="ghost">
-            <Activity className="h-4 w-4 mr-2" />
-            {showTelemetry ? 'Hide' : 'Show'} Stats
-          </Button>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-zinc-400">Field</Label>
+            <Select value={selectedField} onValueChange={(v: any) => setSelectedField(v)}>
+              <SelectTrigger className="w-36 h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="intothedeep">Into the Deep</SelectItem>
+                <SelectItem value="centerstage">CenterStage</SelectItem>
+                <SelectItem value="decode">Decode</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex items-center gap-2">
             <Label className="text-xs text-zinc-400">Curves</Label>
             <Switch checked={useCurves} onCheckedChange={setUseCurves} />
@@ -1735,34 +1612,6 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
 
         {/* Right: Config + Preview */}
         <div className="w-96 border-l border-zinc-800 flex flex-col bg-zinc-900">
-          {/* Telemetry Panel */}
-          {showTelemetry && (
-            <div className="border-b border-zinc-800 p-4 bg-zinc-900/50">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-bold text-white">Telemetry</h3>
-                <TrendingUp className="h-4 w-4 text-blue-400" />
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2 bg-zinc-800 rounded">
-                  <div className="text-zinc-500">Distance</div>
-                  <div className="font-mono text-white">{calculateTelemetry().totalDistance.toFixed(1)}"</div>
-                </div>
-                <div className="p-2 bg-zinc-800 rounded">
-                  <div className="text-zinc-500">Est. Time</div>
-                  <div className="font-mono text-white">{calculateTelemetry().estimatedTime.toFixed(1)}s</div>
-                </div>
-                <div className="p-2 bg-zinc-800 rounded">
-                  <div className="text-zinc-500">Actions</div>
-                  <div className="font-mono text-white">{calculateTelemetry().actionCount}</div>
-                </div>
-                <div className="p-2 bg-zinc-800 rounded">
-                  <div className="text-zinc-500">Avg Speed</div>
-                  <div className="font-mono text-white">{calculateTelemetry().averageSpeed}"/s</div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Servo/Motor Preview */}
           <div className="border-b border-zinc-800 p-4 bg-zinc-900/50">
             <h3 className="text-sm font-bold text-white mb-2">Hardware Status</h3>
@@ -2036,22 +1885,12 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
             <div className="mb-3 p-2 bg-zinc-800/50 rounded border border-zinc-700/50 text-xs text-zinc-400">
               <div className="font-semibold text-zinc-300 mb-1">Interactive Controls:</div>
               <div className="space-y-0.5">
-                {isDrawingMode ? (
-                  <>
-                    <div className="text-blue-300">• <span className="font-semibold">Draw Mode Active</span></div>
-                    <div>• <span className="text-green-400">Click & Drag</span>: Draw path</div>
-                  </>
-                ) : (
-                  <>
-                    <div>• <span className="text-blue-400">Double-Click</span>: Add waypoint</div>
-                    <div>• <span className="text-green-400">Drag waypoint</span>: Move</div>
-                    <div>• <span className="text-red-400">Right-Click</span>: Delete</div>
-                    <div>• <span className="text-purple-400">Shift+Click</span>: Quick add</div>
-                  </>
-                )}
+                <div>• <span className="text-green-400">Drag robot</span>: Move position</div>
+                <div>• <span className="text-blue-400">Ruler</span>: Measure distances</div>
+                <div>• <span className="text-purple-400">Grid</span>: Snap to grid</div>
               </div>
             </div>
-            <div className="aspect-square bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden">
+            <div className="aspect-square bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden relative">
               <canvas
                 ref={canvasRef}
                 width={400}
@@ -2059,8 +1898,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                 className="w-full h-full"
                 style={{
                   cursor: isDrawingMode ? 'crosshair' :
-                          hoverWaypointIndex !== null ? 'pointer' :
-                          draggingWaypointIndex !== null || isDraggingRobot ? 'grabbing' :
+                          isDraggingRobot ? 'grabbing' :
                           'default'
                 }}
                 onMouseDown={handleCanvasMouseDown}
@@ -2069,6 +1907,18 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                 onMouseLeave={handleCanvasMouseUp}
                 onContextMenu={handleCanvasContextMenu}
                 onDoubleClick={handleCanvasDoubleClick}
+              />
+              <MathTools
+                showRuler={showRuler}
+                showProtractor={showProtractor}
+                showGrid={showGrid}
+                gridSize={gridSize}
+                canvasRef={canvasRef}
+                robotPosition={{ x: robotX, y: robotY }}
+                robotHeading={robotHeading}
+                protractorLockToRobot={protractorLockToRobot}
+                onProtractorLockToggle={() => setProtractorLockToRobot(!protractorLockToRobot)}
+                fieldSize={144}
               />
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
@@ -2086,7 +1936,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
               </div>
             </div>
             <div className="mt-2 text-xs text-zinc-500 text-center">
-              Waypoints: {getWaypoints().length}
+              Actions: {actions.length}
             </div>
           </div>
         </div>

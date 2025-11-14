@@ -30,7 +30,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [username, setUsername] = useState<string>("")
+  const [username, setUsername] = useState<string>("Guest")
+  const [isGuest, setIsGuest] = useState(false)
   const [createFormData, setCreateFormData] = useState({
     name: "",
     templateType: "omni-wheel" as 'omni-wheel' | 'mecanum-wheel',
@@ -41,18 +42,20 @@ export default function DashboardPage() {
   })
 
   useEffect(() => {
-    // Require authentication - redirect to waitlist
-    if (!authLoading && !user) {
-      router.push("/waitlist")
+    // Enable guest mode if not authenticated
+    if (!authLoading) {
+      if (user) {
+        setIsGuest(false)
+        loadProjects()
+        loadUserProfile()
+      } else {
+        // Guest mode
+        setIsGuest(true)
+        setUsername("Guest")
+        loadGuestProjects()
+      }
     }
-  }, [user, authLoading, router])
-
-  useEffect(() => {
-    if (user) {
-      loadProjects()
-      loadUserProfile()
-    }
-  }, [user])
+  }, [user, authLoading])
 
   const loadUserProfile = async () => {
     try {
@@ -87,6 +90,28 @@ export default function DashboardPage() {
     }
   }
 
+  const loadGuestProjects = () => {
+    try {
+      setLoading(true)
+      if (typeof window !== 'undefined') {
+        const savedProjects = localStorage.getItem('guestProjects')
+        if (savedProjects) {
+          setProjects(JSON.parse(savedProjects))
+        }
+      }
+    } catch (err: any) {
+      console.error('Error loading guest projects:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const saveGuestProjects = (updatedProjects: Project[]) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('guestProjects', JSON.stringify(updatedProjects))
+    }
+  }
+
   const generateProjectHash = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
   }
@@ -101,6 +126,40 @@ export default function DashboardPage() {
 
       setError(null)
       const projectHash = generateProjectHash()
+
+      // Guest mode - save to localStorage
+      if (isGuest) {
+        const newProject: Project = {
+          id: projectHash,
+          project_hash: projectHash,
+          name: createFormData.name || "Untitled Project",
+          template_type: createFormData.templateType,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+
+        const updatedProjects = [...projects, newProject]
+        setProjects(updatedProjects)
+        saveGuestProjects(updatedProjects)
+        setShowCreateDialog(false)
+        setCreateFormData({
+          name: "",
+          templateType: "omni-wheel",
+          motorFL: "frontLeft",
+          motorFR: "frontRight",
+          motorBL: "backLeft",
+          motorBR: "backRight",
+        })
+
+        // Enable guest mode in session and navigate
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('guestMode', 'true')
+        }
+        router.push(`/dashboard/guest/${projectHash}`)
+        return
+      }
+
+      // Authenticated mode - save to database
       const motorConfig = {
         fl: createFormData.motorFL,
         fr: createFormData.motorFR,
@@ -140,6 +199,15 @@ export default function DashboardPage() {
     if (!confirm("Are you sure you want to delete this project?")) return
 
     try {
+      if (isGuest) {
+        // Guest mode - remove from localStorage
+        const updatedProjects = projects.filter(p => p.id !== projectId)
+        setProjects(updatedProjects)
+        saveGuestProjects(updatedProjects)
+        return
+      }
+
+      // Authenticated mode - delete from database
       const { error } = await supabase
         .from('projects')
         .delete()
@@ -161,7 +229,7 @@ export default function DashboardPage() {
     }
   }
 
-  if (authLoading || !user) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <p className="text-white">Loading...</p>
@@ -335,7 +403,7 @@ export default function DashboardPage() {
                     variant="default"
                     size="sm"
                     className="flex-1"
-                    onClick={() => router.push(`/dashboard/${username}/${project.project_hash}`)}
+                    onClick={() => router.push(`/dashboard/${isGuest ? 'guest' : username}/${project.project_hash}`)}
                   >
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Open
