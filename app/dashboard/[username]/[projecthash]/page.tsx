@@ -1123,12 +1123,37 @@ function CurvesEditorInner() {
   }
 
   const exportRoadRunner = () => {
+    // Build ordered list of nodes by following edges from start
+    const orderedNodes: Node<BlockNodeData>[] = []
+    const visited = new Set<string>()
+
+    const traverseNodes = (nodeId: string) => {
+      if (visited.has(nodeId)) return
+      visited.add(nodeId)
+
+      const node = nodes.find(n => n.id === nodeId)
+      if (node && node.type === 'blockNode') {
+        orderedNodes.push(node)
+      }
+
+      const outgoingEdges = edges.filter(e => e.source === nodeId)
+      outgoingEdges.forEach(edge => traverseNodes(edge.target))
+    }
+
+    traverseNodes('start')
+
+    // Start building code
     let code = `package org.firstinspires.ftc.teamcode;
 
 import com.acmerobotics.roadrunner.geometry.Pose2d;
+import com.acmerobotics.roadrunner.geometry.Vector2d;
 import com.acmerobotics.roadrunner.trajectory.Trajectory;
+import com.acmerobotics.roadrunner.trajectory.TrajectorySequence;
+import com.acmerobotics.roadrunner.trajectory.TrajectorySequenceBuilder;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.Servo;
 
 @Autonomous(name = "${project?.name || 'Auto'} (RoadRunner)", group = "Auto")
 public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}RR extends LinearOpMode {
@@ -1147,28 +1172,99 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}RR extends
             TrajectorySequenceBuilder builder = drive.trajectorySequenceBuilder(startPose);
 `
 
-    actions.forEach(action => {
-      if (action.type === 'moveToPosition') {
+    // Generate code for each node
+    let hasTrajectoryCommands = false
+    orderedNodes.forEach(node => {
+      const data = node.data
+
+      // Movement blocks
+      if (data.type === 'moveToPosition') {
+        hasTrajectoryCommands = true
         code += `
-            .lineTo(new Vector2d(${action.targetX}, ${action.targetY}))`
-        if (action.targetHeading !== undefined) {
+            .lineTo(new Vector2d(${data.targetX || 0}, ${data.targetY || 0}))`
+        if (data.targetHeading !== undefined) {
           code += `
-            .turn(Math.toRadians(${action.targetHeading}))`
+            .turn(Math.toRadians(${data.targetHeading}))`
         }
-      } else if (action.type === 'splineTo') {
+      } else if (data.type === 'splineTo') {
+        hasTrajectoryCommands = true
         code += `
-            .splineTo(new Vector2d(${action.targetX}, ${action.targetY}), Math.toRadians(${action.targetHeading || 0}))`
-      } else if (action.type === 'wait') {
+            .splineTo(new Vector2d(${data.targetX || 0}, ${data.targetY || 0}), Math.toRadians(${data.targetHeading || 0}))`
+      } else if (data.type === 'forward') {
+        hasTrajectoryCommands = true
         code += `
-            .waitSeconds(${action.duration || 1})`
+            .forward(${data.distance || 24})`
+      } else if (data.type === 'backward') {
+        hasTrajectoryCommands = true
+        code += `
+            .back(${data.distance || 24})`
+      } else if (data.type === 'strafeLeft') {
+        hasTrajectoryCommands = true
+        code += `
+            .strafeLeft(${data.distance || 24})`
+      } else if (data.type === 'strafeRight') {
+        hasTrajectoryCommands = true
+        code += `
+            .strafeRight(${data.distance || 24})`
+      } else if (data.type === 'turnLeft') {
+        hasTrajectoryCommands = true
+        code += `
+            .turn(Math.toRadians(${-(data.angle || 90)}))`
+      } else if (data.type === 'turnRight') {
+        hasTrajectoryCommands = true
+        code += `
+            .turn(Math.toRadians(${data.angle || 90}))`
+      } else if (data.type === 'turnToHeading') {
+        hasTrajectoryCommands = true
+        code += `
+            .turn(Math.toRadians(${data.targetHeading || 0}))`
+      }
+      // Control blocks
+      else if (data.type === 'wait') {
+        hasTrajectoryCommands = true
+        code += `
+            .waitSeconds(${data.duration || 1})`
+      }
+      // Mechanism blocks (use addTemporalMarker)
+      else if (data.type === 'setServo') {
+        hasTrajectoryCommands = true
+        code += `
+            .addTemporalMarker(() -> {
+                Servo ${data.servoName || 'servo'} = hardwareMap.get(Servo.class, "${data.servoName || 'servo'}");
+                ${data.servoName || 'servo'}.setPosition(${data.position || 0.5});
+            })`
+      } else if (data.type === 'runMotor') {
+        hasTrajectoryCommands = true
+        code += `
+            .addTemporalMarker(() -> {
+                DcMotor ${data.motorName || 'motor'} = hardwareMap.get(DcMotor.class, "${data.motorName || 'motor'}");
+                ${data.motorName || 'motor'}.setPower(${data.power || 0.5});
+            })`
+      } else if (data.type === 'stopMotor') {
+        hasTrajectoryCommands = true
+        code += `
+            .addTemporalMarker(() -> {
+                DcMotor ${data.motorName || 'motor'} = hardwareMap.get(DcMotor.class, "${data.motorName || 'motor'}");
+                ${data.motorName || 'motor'}.setPower(0);
+            })`
+      } else if (data.type === 'custom' && data.customCode) {
+        hasTrajectoryCommands = true
+        code += `
+            .addTemporalMarker(() -> {
+                ${data.customCode}
+            })`
       }
     })
 
-    code += `;
+    if (hasTrajectoryCommands) {
+      code += `;
 
             TrajectorySequence trajSeq = builder.build();
             drive.followTrajectorySequence(trajSeq);
-        }
+`
+    }
+
+    code += `        }
     }
 }
 `
@@ -1185,44 +1281,156 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}RR extends
   }
 
   const exportPedroPathing = () => {
+    // Build ordered list of nodes by following edges from start
+    const orderedNodes: Node<BlockNodeData>[] = []
+    const visited = new Set<string>()
+
+    const traverseNodes = (nodeId: string) => {
+      if (visited.has(nodeId)) return
+      visited.add(nodeId)
+
+      const node = nodes.find(n => n.id === nodeId)
+      if (node && node.type === 'blockNode') {
+        orderedNodes.push(node)
+      }
+
+      const outgoingEdges = edges.filter(e => e.source === nodeId)
+      outgoingEdges.forEach(edge => traverseNodes(edge.target))
+    }
+
+    traverseNodes('start')
+
+    // Start building code
     let code = `package org.firstinspires.ftc.teamcode;
 
 import com.pedropathing.follower.Follower;
 import com.pedropathing.pathgen.BezierLine;
+import com.pedropathing.pathgen.BezierCurve;
+import com.pedropathing.pathgen.Path;
 import com.pedropathing.pathgen.PathChain;
 import com.pedropathing.pathgen.Point;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.Servo;
 
 @Autonomous(name = "${project?.name || 'Auto'} (PedroPathing)", group = "Auto")
 public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro extends OpMode {
     private Follower follower;
     private PathChain path;
+`
 
+    // Add hardware declarations based on blocks
+    const hasServoBlocks = orderedNodes.some(n => n.data.type === 'setServo' || n.data.type === 'continuousServo')
+    const hasMotorBlocks = orderedNodes.some(n => n.data.type === 'runMotor' || n.data.type === 'stopMotor' || n.data.type === 'setMotorPower')
+
+    if (hasServoBlocks || hasMotorBlocks) {
+      orderedNodes.forEach(node => {
+        if ((node.data.type === 'setServo' || node.data.type === 'continuousServo') && node.data.servoName) {
+          code += `    private Servo ${node.data.servoName};\n`
+        }
+        if ((node.data.type === 'runMotor' || node.data.type === 'stopMotor' || node.data.type === 'setMotorPower') && node.data.motorName) {
+          code += `    private DcMotor ${node.data.motorName};\n`
+        }
+      })
+    }
+
+    code += `
     @Override
     public void init() {
         follower = new Follower(hardwareMap);
-
-        // Build path
-        path = follower.pathBuilder()
-            .addPath(new BezierLine(new Point(${robotX}, ${robotY}, Point.CARTESIAN)))
 `
 
-    actions.forEach(action => {
-      if (action.type === 'moveToPosition' || action.type === 'splineTo') {
-        code += `            .addPath(new BezierLine(new Point(${action.targetX}, ${action.targetY}, Point.CARTESIAN)))\n`
+    // Initialize hardware
+    if (hasServoBlocks || hasMotorBlocks) {
+      orderedNodes.forEach(node => {
+        if ((node.data.type === 'setServo' || node.data.type === 'continuousServo') && node.data.servoName) {
+          code += `        ${node.data.servoName} = hardwareMap.get(Servo.class, "${node.data.servoName}");\n`
+        }
+        if ((node.data.type === 'runMotor' || node.data.type === 'stopMotor' || node.data.type === 'setMotorPower') && node.data.motorName) {
+          code += `        ${node.data.motorName} = hardwareMap.get(DcMotor.class, "${node.data.motorName}");\n`
+        }
+      })
+      code += `\n`
+    }
+
+    // Build path
+    let currentX = robotX
+    let currentY = robotY
+    let pathPoints: string[] = [`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`]
+
+    orderedNodes.forEach(node => {
+      const data = node.data
+
+      // Movement blocks that contribute to path
+      if (data.type === 'moveToPosition' || data.type === 'splineTo') {
+        currentX = data.targetX || currentX
+        currentY = data.targetY || currentY
+        pathPoints.push(`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`)
+      } else if (data.type === 'forward') {
+        // Approximate forward movement (assuming 0 degree heading for simplicity)
+        currentY += (data.distance || 24)
+        pathPoints.push(`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`)
+      } else if (data.type === 'backward') {
+        currentY -= (data.distance || 24)
+        pathPoints.push(`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`)
+      } else if (data.type === 'strafeLeft') {
+        currentX -= (data.distance || 24)
+        pathPoints.push(`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`)
+      } else if (data.type === 'strafeRight') {
+        currentX += (data.distance || 24)
+        pathPoints.push(`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`)
       }
     })
 
-    code += `            .build();
+    // Only build path if there are points
+    if (pathPoints.length > 1) {
+      code += `        // Build path\n`
+      code += `        path = follower.pathBuilder()\n`
+      for (let i = 0; i < pathPoints.length - 1; i++) {
+        code += `            .addPath(new BezierLine(${pathPoints[i]}, ${pathPoints[i + 1]}))\n`
+      }
+      code += `            .build();\n\n`
+      code += `        follower.followPath(path);\n`
+    }
 
-        follower.followPath(path);
+    code += `    }
+
+    @Override
+    public void start() {
+        super.start();
+        follower.startTeleopDrive();
     }
 
     @Override
     public void loop() {
         follower.update();
+`
 
+    // Add mechanism control and other non-path blocks in the loop
+    orderedNodes.forEach(node => {
+      const data = node.data
+
+      if (data.type === 'setServo' && data.servoName) {
+        code += `\n        // Set servo position\n`
+        code += `        ${data.servoName}.setPosition(${data.position || 0.5});\n`
+      } else if (data.type === 'runMotor' && data.motorName) {
+        code += `\n        // Run motor\n`
+        code += `        ${data.motorName}.setPower(${data.power || 0.5});\n`
+      } else if (data.type === 'stopMotor' && data.motorName) {
+        code += `\n        // Stop motor\n`
+        code += `        ${data.motorName}.setPower(0);\n`
+      } else if (data.type === 'setMotorPower' && data.motorName) {
+        code += `\n        // Set motor power\n`
+        code += `        ${data.motorName}.setPower(${data.power || 0.5});\n`
+      } else if (data.type === 'custom' && data.customCode) {
+        code += `\n        // Custom code\n`
+        code += `        ${data.customCode}\n`
+      }
+    })
+
+    code += `
+        // Telemetry
         telemetry.addData("X", follower.getPose().getX());
         telemetry.addData("Y", follower.getPose().getY());
         telemetry.addData("Heading", Math.toDegrees(follower.getPose().getHeading()));
