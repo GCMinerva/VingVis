@@ -842,23 +842,40 @@ function CurvesEditorInner() {
 
     // Find the last node in the current flow to connect from
     let lastNodeId = 'start'
+    let startX = 300 // Default starting X position
+    let startY = 200 // Default starting Y position
+
     if (nodes.length > 1) {
       // Find nodes that don't have outgoing edges
       const nodesWithoutOutgoingEdges = nodes.filter(
         n => n.type === 'blockNode' && !edges.some(e => e.source === n.id)
       )
       if (nodesWithoutOutgoingEdges.length > 0) {
-        lastNodeId = nodesWithoutOutgoingEdges[nodesWithoutOutgoingEdges.length - 1].id
+        const lastNode = nodesWithoutOutgoingEdges[nodesWithoutOutgoingEdges.length - 1]
+        lastNodeId = lastNode.id
+        // Start from the last node's position
+        startX = lastNode.position.x + 300
+        startY = lastNode.position.y
       }
     }
+
+    // Layout configuration
+    const nodeWidth = 280 // Approximate node width
+    const nodeHeight = 120 // Approximate node height
+    const horizontalSpacing = 350 // Space between nodes horizontally
+    const verticalSpacing = 180 // Space between rows
+    const nodesPerRow = 4 // Maximum nodes per row before wrapping
 
     simplified.forEach((point, index) => {
       const nodeId = `moveToPosition-${timestamp}_${index}`
 
-      // Create node positioned relative to canvas
-      // Calculate position in ReactFlow coordinates (approximate)
-      const nodeX = 300 + (index * 250)
-      const nodeY = 200
+      // Create flowing layout that wraps to new rows
+      const row = Math.floor(index / nodesPerRow)
+      const col = index % nodesPerRow
+
+      // Calculate position with better flow layout
+      const nodeX = startX + (col * horizontalSpacing)
+      const nodeY = startY + (row * verticalSpacing)
 
       newNodes.push({
         id: nodeId,
