@@ -16,6 +16,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu"
+import {
   Save,
   Play,
   Pause,
@@ -31,6 +40,7 @@ import {
   Trash2,
   Settings,
   ChevronRight,
+  ChevronDown,
   Ruler,
   Move,
   Target,
@@ -51,6 +61,7 @@ import {
   Copy,
   Grid3x3,
   Compass,
+  Wrench,
 } from "lucide-react"
 
 type Project = {
@@ -1003,101 +1014,157 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
       <Navbar />
 
       {/* Toolbar */}
-      <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-2 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <h1 className="text-base font-bold text-white">{project.name}</h1>
+      <div className="bg-zinc-900 border-b border-zinc-800 px-2 sm:px-4 py-2 flex items-center justify-between gap-2 flex-shrink-0 overflow-x-auto">
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <h1 className="text-sm sm:text-base font-bold text-white truncate max-w-[120px] sm:max-w-none" title={project.name}>
+            {project.name}
+          </h1>
 
+          {/* Animation Controls */}
           <div className="flex items-center gap-1">
             {!isAnimating ? (
-              <Button onClick={startAnimation} size="sm" variant="default" disabled={actions.length === 0}>
-                <Play className="h-4 w-4 mr-2" />
-                Animate
+              <Button onClick={startAnimation} size="sm" variant="default" disabled={actions.length === 0} className="h-8">
+                <Play className="h-3.5 w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Play</span>
               </Button>
             ) : (
-              <Button onClick={stopAnimation} size="sm" variant="destructive">
-                <Pause className="h-4 w-4 mr-2" />
-                Stop
+              <Button onClick={stopAnimation} size="sm" variant="destructive" className="h-8">
+                <Pause className="h-3.5 w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Stop</span>
               </Button>
             )}
-            <Button onClick={resetPosition} size="sm" variant="outline">
-              <SkipBack className="h-4 w-4 mr-2" />
-              Reset
+            <Button onClick={resetPosition} size="sm" variant="outline" className="h-8">
+              <SkipBack className="h-3.5 w-3.5" />
             </Button>
-            <Button onClick={() => setShowRuler(!showRuler)} size="sm" variant="ghost">
-              <Ruler className="h-4 w-4 mr-2" />
-              Ruler
+          </div>
+
+          {/* Tools Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="h-8 gap-1">
+                <Wrench className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">Tools</span>
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuLabel>Drawing Tools</DropdownMenuLabel>
+              <DropdownMenuCheckboxItem
+                checked={showRuler}
+                onCheckedChange={setShowRuler}
+              >
+                <Ruler className="h-4 w-4 mr-2" />
+                Ruler
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={showProtractor}
+                onCheckedChange={setShowProtractor}
+              >
+                <Compass className="h-4 w-4 mr-2" />
+                Protractor
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={showGrid}
+                onCheckedChange={setShowGrid}
+              >
+                <Grid3x3 className="h-4 w-4 mr-2" />
+                Grid
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={isDrawingMode}
+                onCheckedChange={setIsDrawingMode}
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Drawing Mode
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Undo/Redo */}
+          <div className="flex items-center gap-0.5">
+            <Button onClick={undo} disabled={historyIndex <= 0} size="sm" variant="ghost" className="h-8 w-8 p-0" title="Undo">
+              <Undo2 className="h-3.5 w-3.5" />
             </Button>
-            <Button onClick={() => setShowProtractor(!showProtractor)} size="sm" variant="ghost">
-              <Compass className="h-4 w-4 mr-2" />
-              Protractor
-            </Button>
-            <Button onClick={() => setShowGrid(!showGrid)} size="sm" variant="ghost">
-              <Grid3x3 className="h-4 w-4 mr-2" />
-              Grid
-            </Button>
-            <Button
-              onClick={() => setIsDrawingMode(!isDrawingMode)}
-              size="sm"
-              variant={isDrawingMode ? 'default' : 'ghost'}
-            >
-              <Pencil className="h-4 w-4 mr-2" />
-              {isDrawingMode ? 'Exit Draw' : 'Draw'}
-            </Button>
-            <Button onClick={undo} disabled={historyIndex <= 0} size="sm" variant="ghost">
-              <Undo2 className="h-4 w-4" />
-            </Button>
-            <Button onClick={redo} disabled={historyIndex >= actionHistory.length - 1} size="sm" variant="ghost">
-              <Redo2 className="h-4 w-4" />
+            <Button onClick={redo} disabled={historyIndex >= actionHistory.length - 1} size="sm" variant="ghost" className="h-8 w-8 p-0" title="Redo">
+              <Redo2 className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-zinc-400">Field</Label>
-            <Select value={selectedField} onValueChange={(v: any) => setSelectedField(v)}>
-              <SelectTrigger className="w-36 h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="intothedeep">Into the Deep</SelectItem>
-                <SelectItem value="centerstage">CenterStage</SelectItem>
-                <SelectItem value="decode">Decode</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-2">
-            <Label className="text-xs text-zinc-400">Curves</Label>
-            <Switch checked={useCurves} onCheckedChange={setUseCurves} />
-          </div>
-          <Select value={pathMode} onValueChange={(v: any) => setPathMode(v)}>
-            <SelectTrigger className="w-40 h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="simple">Simple</SelectItem>
-              <SelectItem value="roadrunner">RoadRunner</SelectItem>
-              <SelectItem value="pedropathing">PedroPathing</SelectItem>
-            </SelectContent>
-          </Select>
-          <div className="flex items-center gap-2 text-xs text-zinc-400">
-            <span>Speed:</span>
-            <Slider
-              value={[animationSpeed]}
-              onValueChange={([v]) => setAnimationSpeed(v)}
-              min={0.5}
-              max={2}
-              step={0.5}
-              className="w-24"
-            />
-            <span>{animationSpeed}x</span>
-          </div>
-          <Button onClick={handleSave} disabled={saving} size="sm" variant="ghost">
-            <Save className="h-4 w-4 mr-2" />
-            {saving ? 'Saving...' : 'Save'}
+
+        {/* Right side controls */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Settings Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="h-8 gap-1">
+                <Settings className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">Settings</span>
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel>Field Settings</DropdownMenuLabel>
+              <div className="px-2 py-2 space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-400">Field Type</Label>
+                  <Select value={selectedField} onValueChange={(v: any) => setSelectedField(v)}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="intothedeep">Into the Deep</SelectItem>
+                      <SelectItem value="centerstage">CenterStage</SelectItem>
+                      <SelectItem value="decode">Decode</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-400">Path Mode</Label>
+                  <Select value={pathMode} onValueChange={(v: any) => setPathMode(v)}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="simple">Simple</SelectItem>
+                      <SelectItem value="roadrunner">RoadRunner</SelectItem>
+                      <SelectItem value="pedropathing">PedroPathing</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-zinc-400">Smooth Curves</Label>
+                  <Switch checked={useCurves} onCheckedChange={setUseCurves} />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-zinc-400">Animation Speed</Label>
+                  <div className="flex items-center gap-2">
+                    <Slider
+                      value={[animationSpeed]}
+                      onValueChange={([v]) => setAnimationSpeed(v)}
+                      min={0.5}
+                      max={2}
+                      step={0.5}
+                      className="flex-1"
+                    />
+                    <span className="text-xs text-zinc-400 w-8">{animationSpeed}x</span>
+                  </div>
+                </div>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Save & Export */}
+          <Button onClick={handleSave} disabled={saving} size="sm" variant="ghost" className="h-8">
+            <Save className="h-3.5 w-3.5 sm:mr-1.5" />
+            <span className="hidden sm:inline">{saving ? 'Saving...' : 'Save'}</span>
           </Button>
-          <Button onClick={exportCode} size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Export
+          <Button onClick={exportCode} size="sm" className="h-8 bg-blue-600 hover:bg-blue-700">
+            <Download className="h-3.5 w-3.5 sm:mr-1.5" />
+            <span className="hidden sm:inline">Export</span>
           </Button>
         </div>
       </div>
