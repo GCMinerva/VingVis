@@ -959,6 +959,28 @@ function CurvesEditorInner() {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
 
+  // Resize canvas for fullscreen to maintain quality
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    if (isFullscreen) {
+      // Calculate the maximum size while maintaining aspect ratio
+      const maxSize = Math.min(window.innerWidth, window.innerHeight)
+      // Use high resolution for better quality
+      const resolution = Math.min(maxSize * window.devicePixelRatio, 2048)
+      canvas.width = resolution
+      canvas.height = resolution
+    } else {
+      // Reset to default size for normal view
+      canvas.width = 400
+      canvas.height = 400
+    }
+
+    // Redraw after resizing
+    drawField()
+  }, [isFullscreen, drawField])
+
   const loadGuestProject = () => {
     try {
       setLoading(true)
@@ -2562,6 +2584,90 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                 onProtractorLockToggle={() => setProtractorLockToRobot(!protractorLockToRobot)}
                 fieldSize={144}
               />
+
+              {/* Fullscreen Controls Overlay */}
+              {isFullscreen && (
+                <div className="absolute top-0 left-0 right-0 p-4 z-50">
+                  <div className="flex items-start justify-between gap-4">
+                    {/* Left side controls */}
+                    <div className="flex flex-col gap-2 bg-black/80 backdrop-blur-sm rounded-lg p-3 border border-zinc-700">
+                      <div className="text-xs text-zinc-400 font-semibold mb-1">Field Options</div>
+                      <Button
+                        onClick={() => setShowWaypoints(!showWaypoints)}
+                        size="sm"
+                        variant={showWaypoints ? "default" : "outline"}
+                        className="h-8 justify-start"
+                      >
+                        <Waypoints className="h-3 w-3 mr-2" />
+                        Waypoints
+                      </Button>
+                      <Button
+                        onClick={() => setIsDrawingMode(!isDrawingMode)}
+                        size="sm"
+                        variant={isDrawingMode ? "default" : "outline"}
+                        className="h-8 justify-start"
+                      >
+                        <Pencil className="h-3 w-3 mr-2" />
+                        Drawing
+                      </Button>
+                      <Button
+                        onClick={() => setShowGrid(!showGrid)}
+                        size="sm"
+                        variant={showGrid ? "default" : "outline"}
+                        className="h-8 justify-start"
+                      >
+                        <Grid3x3 className="h-3 w-3 mr-2" />
+                        Grid
+                      </Button>
+                      <Button
+                        onClick={() => setShowRuler(!showRuler)}
+                        size="sm"
+                        variant={showRuler ? "default" : "outline"}
+                        className="h-8 justify-start"
+                      >
+                        <Ruler className="h-3 w-3 mr-2" />
+                        Ruler
+                      </Button>
+                      <Button
+                        onClick={() => setShowProtractor(!showProtractor)}
+                        size="sm"
+                        variant={showProtractor ? "default" : "outline"}
+                        className="h-8 justify-start"
+                      >
+                        <Compass className="h-3 w-3 mr-2" />
+                        Protractor
+                      </Button>
+                    </div>
+
+                    {/* Center - Robot Info */}
+                    <div className="flex gap-2 bg-black/80 backdrop-blur-sm rounded-lg p-3 border border-zinc-700">
+                      <div className="text-xs">
+                        <div className="text-zinc-500">X</div>
+                        <div className="font-mono text-white">{robotX.toFixed(1)}"</div>
+                      </div>
+                      <div className="text-xs">
+                        <div className="text-zinc-500">Y</div>
+                        <div className="font-mono text-white">{robotY.toFixed(1)}"</div>
+                      </div>
+                      <div className="text-xs">
+                        <div className="text-zinc-500">θ</div>
+                        <div className="font-mono text-white">{robotHeading.toFixed(0)}°</div>
+                      </div>
+                    </div>
+
+                    {/* Right side - Exit button */}
+                    <Button
+                      onClick={toggleFullscreen}
+                      size="sm"
+                      variant="outline"
+                      className="bg-black/80 backdrop-blur-sm border-zinc-700 hover:bg-zinc-800"
+                    >
+                      <Minimize2 className="h-4 w-4 mr-2" />
+                      Exit Fullscreen
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
               <div className="p-2 rounded bg-zinc-800 border border-zinc-700">
