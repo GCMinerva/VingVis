@@ -31,6 +31,7 @@ import {
   Trash2,
   Settings,
   ChevronRight,
+  ChevronLeft,
   Ruler,
   Move,
   Target,
@@ -51,6 +52,8 @@ import {
   Copy,
   Grid3x3,
   Compass,
+  PanelLeftClose,
+  PanelLeft,
 } from "lucide-react"
 
 type Project = {
@@ -242,6 +245,7 @@ export default function CurvesEditor() {
   const [pathMode, setPathMode] = useState<'roadrunner' | 'pedropathing' | 'simple'>('simple')
   const [blockSearchQuery, setBlockSearchQuery] = useState('')
   const [useCurves, setUseCurves] = useState(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const [actions, setActions] = useState<ActionBlock[]>([])
   const [selectedAction, setSelectedAction] = useState<ActionBlock | null>(null)
@@ -1108,16 +1112,33 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Blocks + Hardware */}
-        <div className="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col">
-          <Tabs defaultValue="blocks" className="flex-1 flex flex-col">
-            <TabsList className="grid w-full grid-cols-2 m-2">
-              <TabsTrigger value="blocks">Blocks</TabsTrigger>
-              <TabsTrigger value="hardware">Hardware</TabsTrigger>
-            </TabsList>
+        <div className={`${sidebarCollapsed ? 'w-12' : 'w-64'} bg-zinc-900 border-r border-zinc-800 flex flex-col transition-all duration-300`}>
+          {/* Collapse Toggle Button */}
+          <div className="p-2 border-b border-zinc-800 flex justify-between items-center">
+            {!sidebarCollapsed && (
+              <span className="text-xs font-semibold text-white">Tools</span>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="h-8 w-8 p-0"
+              title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+            >
+              {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </Button>
+          </div>
 
-            <TabsContent value="blocks" className="flex-1 flex flex-col m-0">
+          {!sidebarCollapsed && (
+            <Tabs defaultValue="blocks" className="flex-1 flex flex-col overflow-hidden">
+              <TabsList className="grid w-full grid-cols-2 m-2 flex-shrink-0">
+                <TabsTrigger value="blocks">Blocks</TabsTrigger>
+                <TabsTrigger value="hardware">Hardware</TabsTrigger>
+              </TabsList>
+
+            <TabsContent value="blocks" className="flex-1 flex flex-col m-0 overflow-hidden">
               {/* Block Search */}
-              <div className="p-3 border-b border-zinc-800">
+              <div className="p-3 border-b border-zinc-800 flex-shrink-0">
                 <Input
                   type="text"
                   placeholder="Search blocks..."
@@ -1701,6 +1722,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
               </ScrollArea>
             </TabsContent>
           </Tabs>
+          )}
         </div>
 
         {/* Center: Timeline */}
