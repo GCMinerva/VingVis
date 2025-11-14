@@ -596,8 +596,8 @@ export default function CurvesEditor() {
   const loadGuestProject = () => {
     try {
       setLoading(true)
-      // Using sessionStorage instead of localStorage for better security
-      const guestProjects = sessionStorage.getItem('guestProjects')
+      // Load from localStorage (same as dashboard)
+      const guestProjects = localStorage.getItem('guestProjects')
       if (guestProjects) {
         const projects = JSON.parse(guestProjects)
         const foundProject = projects.find((p: any) => p.project_hash === params.projecthash)
@@ -607,9 +607,11 @@ export default function CurvesEditor() {
             setActions(foundProject.workflow_data.actions)
           }
         } else {
+          // Project not found, redirect to dashboard
           router.push('/dashboard')
         }
       } else {
+        // No guest projects, redirect to dashboard
         router.push('/dashboard')
       }
     } catch (err: any) {
@@ -648,8 +650,8 @@ export default function CurvesEditor() {
     try {
       setSaving(true)
       if (isGuest) {
-        // Using sessionStorage instead of localStorage for better security
-        const guestProjects = sessionStorage.getItem('guestProjects')
+        // Save to localStorage (same as dashboard)
+        const guestProjects = localStorage.getItem('guestProjects')
         if (guestProjects) {
           const projects = JSON.parse(guestProjects)
           const updatedProjects = projects.map((p: any) => {
@@ -658,7 +660,7 @@ export default function CurvesEditor() {
             }
             return p
           })
-          sessionStorage.setItem('guestProjects', JSON.stringify(updatedProjects))
+          localStorage.setItem('guestProjects', JSON.stringify(updatedProjects))
         }
       } else {
         const { error } = await supabase
