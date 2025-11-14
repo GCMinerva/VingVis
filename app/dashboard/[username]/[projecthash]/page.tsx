@@ -654,7 +654,7 @@ function CurvesEditorInner() {
   const convertDrawnPointsToActions = () => {
     if (drawnPoints.length < 2) return
 
-    // Simplify points - take every Nth point to avoid too many actions
+    // Simplify points - take every Nth point to avoid too many nodes
     const simplified: {x: number, y: number}[] = []
     const step = Math.max(1, Math.floor(drawnPoints.length / 10)) // Max 10 waypoints
 
@@ -666,19 +666,77 @@ function CurvesEditorInner() {
       simplified.push(drawnPoints[drawnPoints.length - 1])
     }
 
-    // Convert to moveToPosition actions
-    const newActions: ActionBlock[] = simplified.map((point, index) => ({
-      id: `${Date.now()}_${index}`,
-      type: 'moveToPosition',
-      label: 'Move to Position',
-      targetX: point.x,
-      targetY: point.y,
-      targetHeading: robotHeading,
-      curveType: useCurves ? 'spline' : 'linear',
-    }))
+    // Convert to nodes and create connections
+    const newNodes: any[] = []
+    const newEdges: any[] = []
+    const timestamp = Date.now()
 
-    setActions([...actions, ...newActions])
-    saveToHistory([...actions, ...newActions])
+    // Find the last node in the current flow to connect from
+    let lastNodeId = 'start'
+    if (nodes.length > 1) {
+      // Find nodes that don't have outgoing edges
+      const nodesWithoutOutgoingEdges = nodes.filter(
+        n => n.type === 'blockNode' && !edges.some(e => e.source === n.id)
+      )
+      if (nodesWithoutOutgoingEdges.length > 0) {
+        lastNodeId = nodesWithoutOutgoingEdges[nodesWithoutOutgoingEdges.length - 1].id
+      }
+    }
+
+    simplified.forEach((point, index) => {
+      const nodeId = `moveToPosition-${timestamp}_${index}`
+
+      // Create node positioned relative to canvas
+      // Calculate position in ReactFlow coordinates (approximate)
+      const nodeX = 300 + (index * 250)
+      const nodeY = 200
+
+      newNodes.push({
+        id: nodeId,
+        type: 'blockNode',
+        position: { x: nodeX, y: nodeY },
+        data: {
+          label: 'Move to Position',
+          type: 'moveToPosition',
+          targetX: point.x,
+          targetY: point.y,
+          targetHeading: robotHeading,
+          curveType: useCurves ? 'spline' : 'linear',
+          distance: 24,
+          power: 0.5,
+          angle: 90,
+          duration: 1,
+          position: 0.5,
+          score: 0,
+        } as BlockNodeData,
+      })
+
+      // Create edge from previous node
+      if (index === 0) {
+        newEdges.push({
+          id: `${lastNodeId}-${nodeId}`,
+          source: lastNodeId,
+          target: nodeId,
+          animated: true,
+          type: 'smoothstep',
+          style: { stroke: '#3b82f6', strokeWidth: 2 },
+        })
+      } else {
+        const prevNodeId = `moveToPosition-${timestamp}_${index - 1}`
+        newEdges.push({
+          id: `${prevNodeId}-${nodeId}`,
+          source: prevNodeId,
+          target: nodeId,
+          animated: true,
+          type: 'smoothstep',
+          style: { stroke: '#3b82f6', strokeWidth: 2 },
+        })
+      }
+    })
+
+    // Add nodes and edges to the flow
+    setNodes((nds) => [...nds, ...newNodes])
+    setEdges((eds) => [...eds, ...newEdges])
   }
 
   const handleCanvasContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
