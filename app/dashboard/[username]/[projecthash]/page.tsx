@@ -55,6 +55,7 @@ import {
   Trash2,
   Settings,
   ChevronRight,
+  ChevronLeft,
   ChevronDown,
   Ruler,
   Move,
@@ -76,6 +77,8 @@ import {
   Copy,
   Grid3x3,
   Compass,
+  PanelLeftClose,
+  PanelLeft,
   Wrench,
 } from "lucide-react"
 
@@ -128,18 +131,21 @@ type I2CDevice = {
   type: 'imu' | 'distance' | 'color' | 'servo-controller'
   address: string
   port: number
+  hub?: 'control' | 'expansion'
 }
 
 type DigitalDevice = {
   name: string
   type: 'touch' | 'limit-switch' | 'magnetic'
   port: number
+  hub?: 'control' | 'expansion'
 }
 
 type AnalogDevice = {
   name: string
   type: 'potentiometer' | 'light-sensor'
   port: number
+  hub?: 'control' | 'expansion'
 }
 
 const BLOCK_TYPES = {
@@ -265,6 +271,7 @@ function CurvesEditorInner() {
   const [pathMode, setPathMode] = useState<'roadrunner' | 'pedropathing' | 'simple'>('simple')
   const [blockSearchQuery, setBlockSearchQuery] = useState('')
   const [useCurves, setUseCurves] = useState(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const [actions, setActions] = useState<ActionBlock[]>([])
   const [selectedAction, setSelectedAction] = useState<ActionBlock | null>(null)
@@ -1357,16 +1364,33 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Blocks + Hardware */}
-        <div className="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col">
-          <Tabs defaultValue="blocks" className="flex-1 flex flex-col">
-            <TabsList className="grid w-full grid-cols-2 m-2">
-              <TabsTrigger value="blocks">Blocks</TabsTrigger>
-              <TabsTrigger value="hardware">Hardware</TabsTrigger>
-            </TabsList>
+        <div className={`${sidebarCollapsed ? 'w-12' : 'w-64'} bg-zinc-900 border-r border-zinc-800 flex flex-col transition-all duration-300`}>
+          {/* Collapse Toggle Button */}
+          <div className="p-2 border-b border-zinc-800 flex justify-between items-center">
+            {!sidebarCollapsed && (
+              <span className="text-xs font-semibold text-white">Tools</span>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="h-8 w-8 p-0"
+              title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+            >
+              {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </Button>
+          </div>
 
-            <TabsContent value="blocks" className="flex-1 flex flex-col m-0">
+          {!sidebarCollapsed && (
+            <Tabs defaultValue="blocks" className="flex-1 flex flex-col overflow-hidden">
+              <TabsList className="grid w-full grid-cols-2 m-2 flex-shrink-0">
+                <TabsTrigger value="blocks">Blocks</TabsTrigger>
+                <TabsTrigger value="hardware">Hardware</TabsTrigger>
+              </TabsList>
+
+            <TabsContent value="blocks" className="flex-1 flex flex-col m-0 overflow-hidden h-0">
               {/* Block Search */}
-              <div className="p-3 border-b border-zinc-800">
+              <div className="p-3 border-b border-zinc-800 flex-shrink-0">
                 <Input
                   type="text"
                   placeholder="Search blocks..."
@@ -1409,7 +1433,8 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                   </Button>
                 </div>
               </div>
-              <ScrollArea className="flex-1 p-3">
+              <ScrollArea className="flex-1 h-full">
+                <div className="p-3">
                 <div className="space-y-1.5">
                   {BLOCK_TYPES[activeTab]
                     .filter(block =>
@@ -1449,11 +1474,14 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                     </div>
                   )}
                 </div>
+                </div>
               </ScrollArea>
             </TabsContent>
 
-            <TabsContent value="hardware" className="flex-1 m-0 p-3 overflow-auto">
-              <div className="space-y-4">
+            <TabsContent value="hardware" className="flex-1 m-0 flex flex-col overflow-hidden h-0">
+              <ScrollArea className="flex-1 h-full">
+                <div className="p-3">
+                <div className="space-y-4">
                 {/* Expansion Hub Toggle */}
                 <div className="p-3 bg-zinc-800/50 rounded border border-zinc-700">
                   <label className="flex items-center justify-between cursor-pointer">
@@ -1472,8 +1500,9 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => setMotors([...motors, { name: `motor${motors.length}`, port: motors.length, reversed: false, hub: 'control' }])}
+                      onClick={() => setMotors([...motors, { name: `motor${motors.length}`, port: 0, reversed: false, hub: 'control' }])}
                       className="h-6 text-[10px] px-2"
+                      disabled={pathMode === 'pedropathing'}
                     >
                       + Add
                     </Button>
@@ -1481,36 +1510,69 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                   <div className="space-y-2">
                     {motors.map((motor, i) => (
                       <div key={i} className="p-2 bg-zinc-800 rounded border border-zinc-700">
-                        <Input
-                          value={motor.name}
-                          onChange={(e) => {
-                            const newMotors = [...motors]
-                            newMotors[i].name = e.target.value
-                            setMotors(newMotors)
-                          }}
-                          className="h-7 text-xs bg-zinc-900 mb-1"
-                        />
-                        <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
-                          <span>Port {motor.port}</span>
-                          {hasExpansionHub && (
-                            <Select
-                              value={motor.hub || 'control'}
-                              onValueChange={(v: 'control' | 'expansion') => {
-                                const newMotors = [...motors]
-                                newMotors[i].hub = v
+                        <div className="flex items-center justify-between mb-1">
+                          <Input
+                            value={motor.name}
+                            onChange={(e) => {
+                              const newMotors = [...motors]
+                              newMotors[i].name = e.target.value
+                              setMotors(newMotors)
+                            }}
+                            className="h-7 text-xs bg-zinc-900 flex-1"
+                            disabled={pathMode === 'pedropathing' && i < 4}
+                          />
+                          {(i >= 4 || pathMode !== 'pedropathing') && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                const newMotors = motors.filter((_, idx) => idx !== i)
                                 setMotors(newMotors)
                               }}
+                              className="h-7 w-7 p-0 ml-1 text-red-500 hover:text-red-400"
                             >
-                              <SelectTrigger className="h-6 w-24 text-[10px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="control">Control</SelectItem>
-                                <SelectItem value="expansion">Expansion</SelectItem>
-                              </SelectContent>
-                            </Select>
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
                           )}
                         </div>
+                        <div className="mb-2">
+                          <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
+                            <span>Port</span>
+                            <span>{motor.port}</span>
+                          </div>
+                          <Slider
+                            value={[motor.port]}
+                            onValueChange={([v]) => {
+                              const newMotors = [...motors]
+                              newMotors[i].port = v
+                              setMotors(newMotors)
+                            }}
+                            min={0}
+                            max={3}
+                            step={1}
+                            disabled={pathMode === 'pedropathing' && i < 4}
+                            className="mt-1"
+                          />
+                        </div>
+                        {hasExpansionHub && (
+                          <Select
+                            value={motor.hub || 'control'}
+                            onValueChange={(v: 'control' | 'expansion') => {
+                              const newMotors = [...motors]
+                              newMotors[i].hub = v
+                              setMotors(newMotors)
+                            }}
+                            disabled={pathMode === 'pedropathing' && i < 4}
+                          >
+                            <SelectTrigger className="h-6 w-full text-[10px] mb-1">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="control">Control Hub</SelectItem>
+                              <SelectItem value="expansion">Expansion Hub</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
                         <label className="flex items-center gap-1 cursor-pointer text-xs text-zinc-400">
                           <input
                             type="checkbox"
@@ -1521,12 +1583,18 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                               setMotors(newMotors)
                             }}
                             className="w-3 h-3"
+                            disabled={pathMode === 'pedropathing' && i < 4}
                           />
                           Reversed
                         </label>
                       </div>
                     ))}
                   </div>
+                  {pathMode === 'pedropathing' && (
+                    <div className="mt-2 p-2 bg-blue-900/20 rounded border border-blue-700/50 text-xs text-blue-300">
+                      Drive motors (first 4) are locked when using PedroPathing
+                    </div>
+                  )}
                 </div>
 
                 {/* Servos */}
@@ -1536,7 +1604,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => setServos([...servos, { name: `servo${servos.length}`, port: servos.length, hub: 'control', type: 'standard' }])}
+                      onClick={() => setServos([...servos, { name: `servo${servos.length}`, port: 0, hub: 'control', type: 'standard' }])}
                       className="h-6 text-[10px] px-2"
                     >
                       + Add
@@ -1545,34 +1613,62 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                   <div className="space-y-2">
                     {servos.map((servo, i) => (
                       <div key={i} className="p-2 bg-zinc-800 rounded border border-zinc-700">
-                        <Input
-                          value={servo.name}
-                          onChange={(e) => {
-                            const newServos = [...servos]
-                            newServos[i].name = e.target.value
-                            setServos(newServos)
-                          }}
-                          className="h-7 text-xs bg-zinc-900 mb-1"
-                        />
-                        <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
-                          <span>Port {servo.port}</span>
-                          <Select
-                            value={servo.type || 'standard'}
-                            onValueChange={(v: 'standard' | 'continuous') => {
+                        <div className="flex items-center justify-between mb-1">
+                          <Input
+                            value={servo.name}
+                            onChange={(e) => {
                               const newServos = [...servos]
-                              newServos[i].type = v
+                              newServos[i].name = e.target.value
                               setServos(newServos)
                             }}
+                            className="h-7 text-xs bg-zinc-900 flex-1"
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const newServos = servos.filter((_, idx) => idx !== i)
+                              setServos(newServos)
+                            }}
+                            className="h-7 w-7 p-0 ml-1 text-red-500 hover:text-red-400"
                           >
-                            <SelectTrigger className="h-6 w-24 text-[10px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="standard">Standard</SelectItem>
-                              <SelectItem value="continuous">Continuous</SelectItem>
-                            </SelectContent>
-                          </Select>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
                         </div>
+                        <div className="mb-2">
+                          <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
+                            <span>Port</span>
+                            <span>{servo.port}</span>
+                          </div>
+                          <Slider
+                            value={[servo.port]}
+                            onValueChange={([v]) => {
+                              const newServos = [...servos]
+                              newServos[i].port = v
+                              setServos(newServos)
+                            }}
+                            min={0}
+                            max={5}
+                            step={1}
+                            className="mt-1"
+                          />
+                        </div>
+                        <Select
+                          value={servo.type || 'standard'}
+                          onValueChange={(v: 'standard' | 'continuous') => {
+                            const newServos = [...servos]
+                            newServos[i].type = v
+                            setServos(newServos)
+                          }}
+                        >
+                          <SelectTrigger className="h-6 w-full text-[10px] mb-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="standard">Standard</SelectItem>
+                            <SelectItem value="continuous">Continuous</SelectItem>
+                          </SelectContent>
+                        </Select>
                         {hasExpansionHub && (
                           <Select
                             value={servo.hub || 'control'}
@@ -1603,7 +1699,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => setI2cDevices([...i2cDevices, { name: 'sensor', type: 'distance', address: '0x00', port: 0 }])}
+                      onClick={() => setI2cDevices([...i2cDevices, { name: 'sensor', type: 'distance', address: '0x00', port: 0, hub: 'control' }])}
                       className="h-6 text-[10px] px-2"
                     >
                       + Add
@@ -1612,15 +1708,28 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                   <div className="space-y-2">
                     {i2cDevices.map((device, i) => (
                       <div key={i} className="p-2 bg-zinc-800 rounded border border-zinc-700">
-                        <Input
-                          value={device.name}
-                          onChange={(e) => {
-                            const newDevices = [...i2cDevices]
-                            newDevices[i].name = e.target.value
-                            setI2cDevices(newDevices)
-                          }}
-                          className="h-7 text-xs bg-zinc-900 mb-1"
-                        />
+                        <div className="flex items-center justify-between mb-1">
+                          <Input
+                            value={device.name}
+                            onChange={(e) => {
+                              const newDevices = [...i2cDevices]
+                              newDevices[i].name = e.target.value
+                              setI2cDevices(newDevices)
+                            }}
+                            className="h-7 text-xs bg-zinc-900 flex-1"
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const newDevices = i2cDevices.filter((_, idx) => idx !== i)
+                              setI2cDevices(newDevices)
+                            }}
+                            className="h-7 w-7 p-0 ml-1 text-red-500 hover:text-red-400"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
                         <Select
                           value={device.type}
                           onValueChange={(v: 'imu' | 'distance' | 'color' | 'servo-controller') => {
@@ -1639,7 +1748,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                             <SelectItem value="servo-controller">Servo Controller</SelectItem>
                           </SelectContent>
                         </Select>
-                        <div className="flex gap-1">
+                        <div className="flex gap-1 mb-1">
                           <Input
                             value={device.address}
                             onChange={(e) => {
@@ -1662,6 +1771,24 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                             className="h-6 text-[10px] bg-zinc-900 w-16"
                           />
                         </div>
+                        {hasExpansionHub && (
+                          <Select
+                            value={device.hub || 'control'}
+                            onValueChange={(v: 'control' | 'expansion') => {
+                              const newDevices = [...i2cDevices]
+                              newDevices[i].hub = v
+                              setI2cDevices(newDevices)
+                            }}
+                          >
+                            <SelectTrigger className="h-6 w-full text-[10px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="control">Control Hub</SelectItem>
+                              <SelectItem value="expansion">Expansion Hub</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1674,7 +1801,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => setDigitalDevices([...digitalDevices, { name: 'touchSensor', type: 'touch', port: 0 }])}
+                      onClick={() => setDigitalDevices([...digitalDevices, { name: 'touchSensor', type: 'touch', port: 0, hub: 'control' }])}
                       className="h-6 text-[10px] px-2"
                     >
                       + Add
@@ -1683,16 +1810,29 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                   <div className="space-y-2">
                     {digitalDevices.map((device, i) => (
                       <div key={i} className="p-2 bg-zinc-800 rounded border border-zinc-700">
-                        <Input
-                          value={device.name}
-                          onChange={(e) => {
-                            const newDevices = [...digitalDevices]
-                            newDevices[i].name = e.target.value
-                            setDigitalDevices(newDevices)
-                          }}
-                          className="h-7 text-xs bg-zinc-900 mb-1"
-                        />
-                        <div className="flex gap-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <Input
+                            value={device.name}
+                            onChange={(e) => {
+                              const newDevices = [...digitalDevices]
+                              newDevices[i].name = e.target.value
+                              setDigitalDevices(newDevices)
+                            }}
+                            className="h-7 text-xs bg-zinc-900 flex-1"
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const newDevices = digitalDevices.filter((_, idx) => idx !== i)
+                              setDigitalDevices(newDevices)
+                            }}
+                            className="h-7 w-7 p-0 ml-1 text-red-500 hover:text-red-400"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <div className="flex gap-1 mb-1">
                           <Select
                             value={device.type}
                             onValueChange={(v: 'touch' | 'limit-switch' | 'magnetic') => {
@@ -1722,6 +1862,24 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                             className="h-6 text-[10px] bg-zinc-900 w-16"
                           />
                         </div>
+                        {hasExpansionHub && (
+                          <Select
+                            value={device.hub || 'control'}
+                            onValueChange={(v: 'control' | 'expansion') => {
+                              const newDevices = [...digitalDevices]
+                              newDevices[i].hub = v
+                              setDigitalDevices(newDevices)
+                            }}
+                          >
+                            <SelectTrigger className="h-6 w-full text-[10px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="control">Control Hub</SelectItem>
+                              <SelectItem value="expansion">Expansion Hub</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1734,7 +1892,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => setAnalogDevices([...analogDevices, { name: 'potentiometer', type: 'potentiometer', port: 0 }])}
+                      onClick={() => setAnalogDevices([...analogDevices, { name: 'potentiometer', type: 'potentiometer', port: 0, hub: 'control' }])}
                       className="h-6 text-[10px] px-2"
                     >
                       + Add
@@ -1743,16 +1901,29 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                   <div className="space-y-2">
                     {analogDevices.map((device, i) => (
                       <div key={i} className="p-2 bg-zinc-800 rounded border border-zinc-700">
-                        <Input
-                          value={device.name}
-                          onChange={(e) => {
-                            const newDevices = [...analogDevices]
-                            newDevices[i].name = e.target.value
-                            setAnalogDevices(newDevices)
-                          }}
-                          className="h-7 text-xs bg-zinc-900 mb-1"
-                        />
-                        <div className="flex gap-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <Input
+                            value={device.name}
+                            onChange={(e) => {
+                              const newDevices = [...analogDevices]
+                              newDevices[i].name = e.target.value
+                              setAnalogDevices(newDevices)
+                            }}
+                            className="h-7 text-xs bg-zinc-900 flex-1"
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const newDevices = analogDevices.filter((_, idx) => idx !== i)
+                              setAnalogDevices(newDevices)
+                            }}
+                            className="h-7 w-7 p-0 ml-1 text-red-500 hover:text-red-400"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <div className="flex gap-1 mb-1">
                           <Select
                             value={device.type}
                             onValueChange={(v: 'potentiometer' | 'light-sensor') => {
@@ -1781,13 +1952,34 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                             className="h-6 text-[10px] bg-zinc-900 w-16"
                           />
                         </div>
+                        {hasExpansionHub && (
+                          <Select
+                            value={device.hub || 'control'}
+                            onValueChange={(v: 'control' | 'expansion') => {
+                              const newDevices = [...analogDevices]
+                              newDevices[i].hub = v
+                              setAnalogDevices(newDevices)
+                            }}
+                          >
+                            <SelectTrigger className="h-6 w-full text-[10px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="control">Control Hub</SelectItem>
+                              <SelectItem value="expansion">Expansion Hub</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
                     ))}
                   </div>
                 </div>
-              </div>
+                </div>
+                </div>
+              </ScrollArea>
             </TabsContent>
           </Tabs>
+          )}
         </div>
 
         {/* Center: Node Editor */}
