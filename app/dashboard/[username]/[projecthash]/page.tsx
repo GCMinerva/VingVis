@@ -416,6 +416,109 @@ function CurvesEditorInner() {
       ctx.strokeRect(0, 0, canvas.width, canvas.height)
     }
 
+    // Node preview mode - show path up to current node
+    if (isNodePreviewing) {
+      const previewWaypoints = getWaypointsUpToNode(currentPreviewNodeIndex)
+
+      // Calculate preview path
+      let previewPath: {x: number, y: number, heading: number}[] = []
+      if (useCurves && previewWaypoints.length > 2) {
+        previewPath = generateSpline(previewWaypoints, 100)
+      } else {
+        // Linear interpolation
+        for (let i = 0; i < previewWaypoints.length - 1; i++) {
+          const start = previewWaypoints[i]
+          const end = previewWaypoints[i + 1]
+          const steps = 20
+          for (let j = 0; j <= steps; j++) {
+            const t = j / steps
+            previewPath.push({
+              x: start.x + (end.x - start.x) * t,
+              y: start.y + (end.y - start.y) * t,
+              heading: start.heading + (end.heading - start.heading) * t,
+            })
+          }
+        }
+      }
+
+      // Draw full path in faded color
+      if (path.length > 1) {
+        ctx.strokeStyle = '#444'
+        ctx.lineWidth = 2
+        ctx.globalAlpha = 0.3
+        ctx.beginPath()
+        path.forEach((point, i) => {
+          const x = (point.x / 144) * canvas.width
+          const y = (point.y / 144) * canvas.height
+          if (i === 0) ctx.moveTo(x, y)
+          else ctx.lineTo(x, y)
+        })
+        ctx.stroke()
+        ctx.globalAlpha = 1
+      }
+
+      // Draw preview path (up to current node) in highlighted color
+      if (previewPath.length > 1) {
+        ctx.strokeStyle = '#10b981'
+        ctx.lineWidth = 3
+        ctx.beginPath()
+        previewPath.forEach((point, i) => {
+          const x = (point.x / 144) * canvas.width
+          const y = (point.y / 144) * canvas.height
+          if (i === 0) ctx.moveTo(x, y)
+          else ctx.lineTo(x, y)
+        })
+        ctx.stroke()
+      }
+
+      // Draw waypoints with different colors for completed vs upcoming
+      const allWaypoints = getWaypoints()
+      allWaypoints.forEach((waypoint, index) => {
+        const x = (waypoint.x / 144) * canvas.width
+        const y = (waypoint.y / 144) * canvas.height
+
+        // Check if this waypoint is part of the preview
+        const isCompleted = index <= previewWaypoints.length - 1
+
+        // Draw waypoint circle
+        ctx.fillStyle = isCompleted ? '#10b981' : '#666'
+        ctx.strokeStyle = isCompleted ? '#ffffff' : '#888'
+        ctx.lineWidth = isCompleted ? 2 : 1
+        ctx.beginPath()
+        ctx.arc(x, y, 8, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.stroke()
+
+        // Draw waypoint number
+        ctx.fillStyle = '#ffffff'
+        ctx.font = 'bold 10px monospace'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(index.toString(), x, y)
+
+        // Draw heading indicator for completed waypoints
+        if (index > 0 && isCompleted) {
+          ctx.strokeStyle = '#fbbf24'
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          const headingX = x + 15 * Math.cos((waypoint.heading * Math.PI) / 180)
+          const headingY = y + 15 * Math.sin((waypoint.heading * Math.PI) / 180)
+          ctx.moveTo(x, y)
+          ctx.lineTo(headingX, headingY)
+          ctx.stroke()
+        }
+      })
+
+      // Draw robot at current preview position
+      if (previewWaypoints.length > 0) {
+        const currentPos = previewWaypoints[previewWaypoints.length - 1]
+        drawRobot(ctx, currentPos.x, currentPos.y, currentPos.heading, scale)
+      } else {
+        drawRobot(ctx, robotX, robotY, robotHeading, scale)
+      }
+      return
+    }
+
     // Draw path
     if (path.length > 1) {
       // Full path (static)
@@ -545,7 +648,7 @@ function CurvesEditorInner() {
       ctx.stroke()
       ctx.setLineDash([])
     }
-  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves, fieldImage, isDrawing, drawnPoints, showWaypoints, nodes, edges])
+  }, [robotX, robotY, robotHeading, path, showRuler, animationProgress, isAnimating, useCurves, fieldImage, isDrawing, drawnPoints, showWaypoints, nodes, edges, isNodePreviewing, currentPreviewNodeIndex])
 
   useEffect(() => {
     drawField()
@@ -682,6 +785,80 @@ function CurvesEditorInner() {
     }
 
     return orderedNodes
+  }
+
+  // Get waypoints up to a specific node index for preview mode
+  const getWaypointsUpToNode = (nodeIndex: number): {x: number, y: number, heading: number}[] => {
+    const waypoints: {x: number, y: number, heading: number}[] = []
+    let currentX = robotX
+    let currentY = robotY
+    let currentHeading = robotHeading
+
+    // Start position
+    waypoints.push({x: currentX, y: currentY, heading: currentHeading})
+
+    // Get ordered nodes
+    const orderedNodes: Node<BlockNodeData>[] = []
+    const visited = new Set<string>()
+
+    const traverseNodes = (nodeId: string) => {
+      if (visited.has(nodeId)) return
+      visited.add(nodeId)
+
+      const node = nodes.find(n => n.id === nodeId)
+      if (node && node.type === 'blockNode') {
+        orderedNodes.push(node)
+      }
+
+      const outgoingEdges = edges.filter(e => e.source === nodeId)
+      outgoingEdges.forEach(edge => traverseNodes(edge.target))
+    }
+
+    traverseNodes('start')
+
+    // Process nodes up to the specified index
+    const nodesToProcess = orderedNodes.slice(0, nodeIndex + 1)
+    nodesToProcess.forEach(node => {
+      const data = node.data
+
+      if (data.type === 'moveToPosition' || data.type === 'splineTo') {
+        currentX = data.targetX || currentX
+        currentY = data.targetY || currentY
+        currentHeading = data.targetHeading !== undefined ? data.targetHeading : currentHeading
+        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
+      } else if (data.type === 'forward') {
+        const distance = data.distance || 24
+        currentX += distance * Math.cos((currentHeading * Math.PI) / 180)
+        currentY += distance * Math.sin((currentHeading * Math.PI) / 180)
+        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
+      } else if (data.type === 'backward') {
+        const distance = data.distance || 24
+        currentX -= distance * Math.cos((currentHeading * Math.PI) / 180)
+        currentY -= distance * Math.sin((currentHeading * Math.PI) / 180)
+        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
+      } else if (data.type === 'strafeLeft') {
+        const distance = data.distance || 24
+        currentX += distance * Math.cos(((currentHeading - 90) * Math.PI) / 180)
+        currentY += distance * Math.sin(((currentHeading - 90) * Math.PI) / 180)
+        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
+      } else if (data.type === 'strafeRight') {
+        const distance = data.distance || 24
+        currentX += distance * Math.cos(((currentHeading + 90) * Math.PI) / 180)
+        currentY += distance * Math.sin(((currentHeading + 90) * Math.PI) / 180)
+        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
+      } else if (data.type === 'turnLeft') {
+        currentHeading -= data.angle || 90
+        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
+      } else if (data.type === 'turnRight') {
+        currentHeading += data.angle || 90
+        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
+      } else if (data.type === 'turnToHeading') {
+        currentHeading = data.targetHeading || currentHeading
+        waypoints.push({x: currentX, y: currentY, heading: currentHeading})
+      }
+    })
+
+    return waypoints
   }
 
   const calculatePath = () => {
