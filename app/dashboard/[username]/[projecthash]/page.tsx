@@ -186,6 +186,7 @@ const BLOCK_TYPES = {
     { id: 'loop', label: 'Loop', icon: Repeat, description: 'Repeat actions' },
     { id: 'if', label: 'If/Else', icon: GitBranch, description: 'Conditional execution' },
     { id: 'parallel', label: 'Run Parallel', icon: Zap, description: 'Run actions in parallel' },
+    { id: 'everynode', label: 'For Every Node', icon: Grid3x3, description: 'Execute actions for each node in collection' },
     { id: 'custom', label: 'Custom Code', icon: Code, description: 'Insert custom Java code' },
   ]
 }
@@ -1684,6 +1685,44 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}RR extends
         code += `
             .waitSeconds(${data.duration || 1})`
       }
+      else if (data.type === 'everynode') {
+        hasTrajectoryCommands = true
+        const iterVar = data.iteratorVariable || 'i'
+
+        if (data.collectionType === 'range') {
+          const start = data.startRange || 0
+          const end = data.endRange || 10
+          code += `
+            .addTemporalMarker(() -> {
+                // For every node (range iteration)
+                for (int ${iterVar} = ${start}; ${iterVar} < ${end}; ${iterVar}++) {
+                    // Execute child nodes here
+                    telemetry.addData("Iterator", ${iterVar});
+                    telemetry.update();
+                }
+            })`
+        } else if (data.collectionType === 'array') {
+          const arrayName = data.collectionName || 'items'
+          code += `
+            .addTemporalMarker(() -> {
+                // For every node (array iteration)
+                for (var ${iterVar} : ${arrayName}) {
+                    // Execute child nodes here
+                    telemetry.addData("Current Item", ${iterVar});
+                    telemetry.update();
+                }
+            })`
+        } else {
+          // waypoints
+          code += `
+            .addTemporalMarker(() -> {
+                // For every waypoint
+                // Note: Implement waypoint iteration based on your trajectory
+                telemetry.addData("Info", "Processing waypoints");
+                telemetry.update();
+            })`
+        }
+      }
       // Mechanism blocks (use addTemporalMarker)
       else if (data.type === 'setServo') {
         hasTrajectoryCommands = true
@@ -1920,12 +1959,54 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
     }
   }
 
+  // Helper function to get block category
+  const getBlockCategory = (nodeId: string): string | null => {
+    const node = nodes.find(n => n.id === nodeId)
+    if (!node || !node.data?.type) return null
+
+    // Check which category the block belongs to
+    for (const [category, blocks] of Object.entries(BLOCK_TYPES)) {
+      if (blocks.some((block: any) => block.id === node.data.type)) {
+        return category
+      }
+    }
+    return null
+  }
+
   // ReactFlow handlers
   const onConnect = useCallback(
     (params: Connection | Edge) => {
+      const { source, target } = params
+
+      // Validation 1: Prevent self-connections
+      if (source === target) {
+        alert('A node cannot connect to itself!')
+        return
+      }
+
+      // Validation 2: Prevent duplicate paths with same action category
+      // Allow parallel operations (move + servo), but prevent duplicate operations (move + move)
+      const targetCategory = getBlockCategory(target!)
+
+      if (targetCategory && targetCategory !== 'control') {
+        // Check all existing edges from this source
+        const existingEdgesFromSource = edges.filter(edge => edge.source === source)
+
+        // Check if any existing edge connects to a node of the same category as the new target
+        const hasSameCategoryConnection = existingEdgesFromSource.some(edge => {
+          const existingTargetCategory = getBlockCategory(edge.target)
+          return existingTargetCategory === targetCategory
+        })
+
+        if (hasSameCategoryConnection) {
+          alert(`Cannot connect multiple ${targetCategory} blocks from the same node!\nYou can run different types of actions in parallel (e.g., movement + servo), but not the same type.`)
+          return
+        }
+      }
+
       setEdges((eds) => addEdge({ ...params, animated: true, type: 'smoothstep', style: { stroke: '#3b82f6', strokeWidth: 2 } }, eds))
     },
-    [setEdges]
+    [setEdges, nodes, edges]
   )
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node<BlockNodeData>) => {
@@ -3193,6 +3274,101 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                       onChange={(e) => updateNodeData(selectedNode.id, { loopCount: parseInt(e.target.value) || 1 })}
                       className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
                     />
+                  </div>
+                )}
+                {(selectedNode.data.type === 'everynode') && (
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="text-xs text-zinc-400">Collection Type</Label>
+                      <Select
+                        value={selectedNode.data.collectionType || 'waypoints'}
+                        onValueChange={(value: 'waypoints' | 'array' | 'range') =>
+                          updateNodeData(selectedNode.id, { collectionType: value })
+                        }
+                      >
+                        <SelectTrigger className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="waypoints">Waypoints</SelectItem>
+                          <SelectItem value="array">Array</SelectItem>
+                          <SelectItem value="range">Range</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {selectedNode.data.collectionType === 'array' && (
+                      <>
+                        <div>
+                          <Label className="text-xs text-zinc-400">Array Name</Label>
+                          <Input
+                            type="text"
+                            value={selectedNode.data.collectionName || ''}
+                            onChange={(e) => updateNodeData(selectedNode.id, { collectionName: e.target.value })}
+                            placeholder="myArray"
+                            className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-zinc-400">Iterator Variable</Label>
+                          <Input
+                            type="text"
+                            value={selectedNode.data.iteratorVariable || 'item'}
+                            onChange={(e) => updateNodeData(selectedNode.id, { iteratorVariable: e.target.value })}
+                            placeholder="item"
+                            className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {selectedNode.data.collectionType === 'range' && (
+                      <>
+                        <div>
+                          <Label className="text-xs text-zinc-400">Iterator Variable</Label>
+                          <Input
+                            type="text"
+                            value={selectedNode.data.iteratorVariable || 'i'}
+                            onChange={(e) => updateNodeData(selectedNode.id, { iteratorVariable: e.target.value })}
+                            placeholder="i"
+                            className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs text-zinc-400">Start</Label>
+                            <Input
+                              type="number"
+                              value={selectedNode.data.startRange || 0}
+                              onChange={(e) => updateNodeData(selectedNode.id, { startRange: parseInt(e.target.value) || 0 })}
+                              className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-zinc-400">End</Label>
+                            <Input
+                              type="number"
+                              value={selectedNode.data.endRange || 10}
+                              onChange={(e) => updateNodeData(selectedNode.id, { endRange: parseInt(e.target.value) || 10 })}
+                              className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {selectedNode.data.collectionType === 'waypoints' && (
+                      <div>
+                        <Label className="text-xs text-zinc-400">Iterator Variable</Label>
+                        <Input
+                          type="text"
+                          value={selectedNode.data.iteratorVariable || 'waypoint'}
+                          onChange={(e) => updateNodeData(selectedNode.id, { iteratorVariable: e.target.value })}
+                          placeholder="waypoint"
+                          className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
                 {(selectedNode.data.type === 'waitUntil' || selectedNode.data.type === 'waitForSensor' || selectedNode.data.type === 'if') && (
