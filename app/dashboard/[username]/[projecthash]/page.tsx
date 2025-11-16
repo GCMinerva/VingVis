@@ -379,9 +379,18 @@ function CurvesEditorInner() {
         loadProject()
       } else if (isGuest) {
         loadGuestProject()
+      } else if (!authLoading && typeof window !== 'undefined') {
+        // Check sessionStorage directly to handle race condition
+        const guestMode = sessionStorage.getItem('guestMode') === 'true'
+        if (guestMode) {
+          loadGuestProject()
+        } else {
+          // Not authenticated and not in guest mode, stop loading
+          setLoading(false)
+        }
       }
     }
-  }, [user, isGuest, params.projecthash]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, isGuest, params.projecthash, authLoading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const drawField = useCallback(() => {
     const canvas = canvasRef.current
