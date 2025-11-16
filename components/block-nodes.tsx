@@ -24,6 +24,7 @@ import {
   Repeat,
   GitBranch,
   Pause,
+  Grid3x3,
 } from 'lucide-react'
 
 export type BlockNodeData = {
@@ -49,6 +50,12 @@ export type BlockNodeData = {
   score?: number
   condition?: string
   loopCount?: number
+  // Everynode params
+  collectionType?: 'waypoints' | 'array' | 'range'
+  collectionName?: string
+  iteratorVariable?: string
+  startRange?: number
+  endRange?: number
 }
 
 const ICON_MAP: { [key: string]: any } = {
@@ -79,6 +86,7 @@ const ICON_MAP: { [key: string]: any } = {
   loop: Repeat,
   if: GitBranch,
   parallel: Zap,
+  everynode: Grid3x3,
   custom: Code,
 }
 
@@ -143,6 +151,14 @@ export const BlockNode = memo(({ data, selected }: NodeProps<BlockNodeData>) => 
       return `${data.motorName || 'motor'}: ${((data.power || 0.5) * 100).toFixed(0)}%`
     } else if (data.type === 'loop') {
       return `${data.loopCount || 1}x`
+    } else if (data.type === 'everynode') {
+      if (data.collectionType === 'range') {
+        return `${data.iteratorVariable || 'i'}: ${data.startRange || 0} to ${data.endRange || 10}`
+      } else if (data.collectionType === 'array') {
+        return `for ${data.iteratorVariable || 'item'} in ${data.collectionName || 'array'}`
+      } else {
+        return `for each waypoint`
+      }
     } else if (data.condition) {
       return `if ${data.condition}`
     }
