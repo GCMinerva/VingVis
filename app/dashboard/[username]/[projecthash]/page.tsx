@@ -4022,7 +4022,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
             {/* Motor Configuration */}
             {configDialogType === 'motor' && (() => {
               const motorArray = configDialogHub === 'control' ? controlMotors : expansionMotors
@@ -4366,7 +4366,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                   <img
                     src="https://docs.revrobotics.com/~gitbook/image?url=https%3A%2F%2F1359443677-files.gitbook.io%2F%7E%2Ffiles%2Fv0%2Fb%2Fgitbook-legacy-files%2Fo%2Fassets%252Fftc-control-system%252F-M8MwLCHioGUmBeHgdmq%252F-M8N18g7FA00YUtTVAaT%252F38.png%3Fgeneration%3D1590614867952389%26alt%3Dmedia&width=300&dpr=4&quality=100&sign=c44f7f9&sv=2"
                     alt="REV Robotics Expansion Hub"
-                    className="max-w-full h-auto rounded"
+                    className="w-48 h-auto rounded"
                   />
                 </div>
 
