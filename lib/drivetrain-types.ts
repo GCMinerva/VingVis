@@ -34,11 +34,13 @@ export const DRIVETRAIN_DEFINITIONS: Record<DriveTrainType, DriveTrainDefinition
   'tank-drive': {
     id: 'tank-drive',
     name: 'Tank Drive',
-    description: 'Simple 2-motor drive system - left and right side motors',
-    motorCount: 2,
+    description: 'Traditional drive with left and right side motors - simple and reliable',
+    motorCount: 4,
     motors: [
-      { position: 'fl', defaultName: 'leftMotor', required: true },
-      { position: 'fr', defaultName: 'rightMotor', required: true },
+      { position: 'fl', defaultName: 'leftFront', required: true },
+      { position: 'fr', defaultName: 'rightFront', required: true },
+      { position: 'bl', defaultName: 'leftBack', required: true },
+      { position: 'br', defaultName: 'rightBack', required: true },
     ],
     movementCapabilities: {
       forward: true,

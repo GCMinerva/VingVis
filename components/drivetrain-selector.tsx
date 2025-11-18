@@ -52,39 +52,51 @@ function RobotChassis({ type, isAnimating }: { type: DriveTrainType; isAnimating
   const renderWheels = () => {
     const wheelPositions = {
       'tank-drive': [
-        { x: 10, y: 20, rotation: 0 },
-        { x: 70, y: 20, rotation: 0 },
+        // Left side wheels
+        { x: 15, y: 25, rotation: 0 },
+        { x: 15, y: 50, rotation: 0 },
+        { x: 15, y: 75, rotation: 0 },
+        // Right side wheels
+        { x: 85, y: 25, rotation: 0 },
+        { x: 85, y: 50, rotation: 0 },
+        { x: 85, y: 75, rotation: 0 },
       ],
       'omni-wheel': [
-        { x: 15, y: 15, rotation: 45 },
-        { x: 65, y: 15, rotation: -45 },
-        { x: 15, y: 65, rotation: -45 },
-        { x: 65, y: 65, rotation: 45 },
+        // Omni wheels oriented perpendicular to robot body (0°)
+        { x: 18, y: 18, rotation: 0 },
+        { x: 82, y: 18, rotation: 0 },
+        { x: 18, y: 82, rotation: 0 },
+        { x: 82, y: 82, rotation: 0 },
       ],
       'mecanum-wheel': [
-        { x: 15, y: 15, rotation: 45 },
-        { x: 65, y: 15, rotation: -45 },
-        { x: 15, y: 65, rotation: -45 },
-        { x: 65, y: 65, rotation: 45 },
+        // Mecanum: FL and BR rollers at 45°, FR and BL at -45°
+        { x: 18, y: 18, rotation: 45 },  // Front Left
+        { x: 82, y: 18, rotation: -45 }, // Front Right
+        { x: 18, y: 82, rotation: -45 }, // Back Left
+        { x: 82, y: 82, rotation: 45 },  // Back Right
       ],
       'x-drive': [
-        { x: 20, y: 20, rotation: 45 },
-        { x: 60, y: 20, rotation: -45 },
-        { x: 20, y: 60, rotation: -45 },
-        { x: 60, y: 60, rotation: 45 },
+        // X-Drive: all wheels at 45° angles positioned at corners
+        { x: 23, y: 23, rotation: 45 },
+        { x: 77, y: 23, rotation: -45 },
+        { x: 23, y: 77, rotation: -45 },
+        { x: 77, y: 77, rotation: 45 },
       ],
       'h-drive': [
-        { x: 15, y: 15, rotation: 0 },
-        { x: 65, y: 15, rotation: 0 },
-        { x: 15, y: 65, rotation: 0 },
-        { x: 65, y: 65, rotation: 0 },
-        { x: 40, y: 40, rotation: 90 }, // Center strafe wheel
+        // 4 corner wheels vertical
+        { x: 18, y: 18, rotation: 0 },
+        { x: 82, y: 18, rotation: 0 },
+        { x: 18, y: 82, rotation: 0 },
+        { x: 82, y: 82, rotation: 0 },
+        // Center strafe wheel horizontal
+        { x: 50, y: 50, rotation: 90 },
       ],
       'swerve-drive': [
-        { x: 15, y: 15, rotation: 0 },
-        { x: 65, y: 15, rotation: 0 },
-        { x: 15, y: 65, rotation: 0 },
-        { x: 65, y: 65, rotation: 0 },
+        // 4 swerve modules at corners
+        { x: 18, y: 18, rotation: 0 },
+        { x: 82, y: 18, rotation: 0 },
+        { x: 18, y: 82, rotation: 0 },
+        { x: 82, y: 82, rotation: 0 },
       ],
     }
 
@@ -92,20 +104,23 @@ function RobotChassis({ type, isAnimating }: { type: DriveTrainType; isAnimating
 
     return positions.map((pos, index) => (
       <g key={index}>
+        {/* Main wheel */}
         <motion.rect
           x={pos.x - 5}
           y={pos.y - 8}
           width="10"
           height="16"
-          fill="#3b82f6"
-          stroke="#60a5fa"
-          strokeWidth="1"
+          fill={type === 'tank-drive' ? '#22c55e' : '#3b82f6'}
+          stroke={type === 'tank-drive' ? '#16a34a' : '#60a5fa'}
+          strokeWidth="1.5"
           rx="2"
           transform={`rotate(${pos.rotation} ${pos.x} ${pos.y})`}
           animate={
             isAnimating
               ? {
-                  fill: ['#3b82f6', '#60a5fa', '#3b82f6'],
+                  fill: type === 'tank-drive'
+                    ? ['#22c55e', '#4ade80', '#22c55e']
+                    : ['#3b82f6', '#60a5fa', '#3b82f6'],
                   scale: [1, 1.1, 1],
                 }
               : {}
@@ -113,29 +128,106 @@ function RobotChassis({ type, isAnimating }: { type: DriveTrainType; isAnimating
           transition={{
             duration: 2,
             repeat: Infinity,
-            delay: index * 0.2,
+            delay: index * 0.15,
           }}
         />
-        {type === 'swerve-drive' && index < 4 && (
-          // Steering indicators for swerve drive
-          <motion.circle
+
+        {/* Omni wheel rollers */}
+        {type === 'omni-wheel' && (
+          <>
+            <line
+              x1={pos.x - 3}
+              y1={pos.y}
+              x2={pos.x + 3}
+              y2={pos.y}
+              stroke="#60a5fa"
+              strokeWidth="1"
+              transform={`rotate(${pos.rotation} ${pos.x} ${pos.y})`}
+            />
+          </>
+        )}
+
+        {/* Mecanum wheel rollers pattern */}
+        {type === 'mecanum-wheel' && (
+          <>
+            <line
+              x1={pos.x - 4}
+              y1={pos.y - 4}
+              x2={pos.x + 4}
+              y2={pos.y + 4}
+              stroke="#f59e0b"
+              strokeWidth="1.5"
+              transform={`rotate(${pos.rotation} ${pos.x} ${pos.y})`}
+            />
+            <line
+              x1={pos.x - 4}
+              y1={pos.y}
+              x2={pos.x + 4}
+              y2={pos.y}
+              stroke="#f59e0b"
+              strokeWidth="1"
+              transform={`rotate(${pos.rotation} ${pos.x} ${pos.y})`}
+            />
+          </>
+        )}
+
+        {/* X-Drive indicator */}
+        {type === 'x-drive' && (
+          <circle
             cx={pos.x}
             cy={pos.y}
-            r="3"
-            fill="#f59e0b"
-            animate={
-              isAnimating
-                ? {
-                    rotate: [0, 360],
-                  }
-                : {}
-            }
-            transition={{
-              duration: 4,
-              repeat: Infinity,
-              ease: "linear",
-            }}
+            r="2.5"
+            fill="#a855f7"
+            opacity="0.8"
           />
+        )}
+
+        {/* H-Drive center wheel highlight */}
+        {type === 'h-drive' && index === 4 && (
+          <rect
+            x={pos.x - 6}
+            y={pos.y - 10}
+            width="12"
+            height="20"
+            fill="none"
+            stroke="#f59e0b"
+            strokeWidth="2"
+            rx="3"
+            transform={`rotate(${pos.rotation} ${pos.x} ${pos.y})`}
+          />
+        )}
+
+        {/* Swerve drive module indicators */}
+        {type === 'swerve-drive' && (
+          <>
+            <motion.circle
+              cx={pos.x}
+              cy={pos.y}
+              r="8"
+              fill="none"
+              stroke="#f59e0b"
+              strokeWidth="1.5"
+              strokeDasharray="2,2"
+              animate={
+                isAnimating
+                  ? {
+                      rotate: [0, 360],
+                    }
+                  : {}
+              }
+              transition={{
+                duration: 4,
+                repeat: Infinity,
+                ease: "linear",
+              }}
+            />
+            <circle
+              cx={pos.x}
+              cy={pos.y}
+              r="3"
+              fill="#f59e0b"
+            />
+          </>
         )}
       </g>
     ))

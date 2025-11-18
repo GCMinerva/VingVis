@@ -396,22 +396,42 @@ export default function DashboardPage() {
                         {createFormData.templateType === 'tank-drive' && (
                           <>
                             <div>
-                              <Label htmlFor="motorFL" className="text-xs text-muted-foreground">Left Motor</Label>
+                              <Label htmlFor="motorFL" className="text-xs text-muted-foreground">Left Front</Label>
                               <Input
                                 id="motorFL"
-                                placeholder="leftMotor"
+                                placeholder="leftFront"
                                 value={createFormData.motorFL}
                                 onChange={(e) => setCreateFormData({ ...createFormData, motorFL: e.target.value })}
                                 className="bg-background/50 mt-1"
                               />
                             </div>
                             <div>
-                              <Label htmlFor="motorFR" className="text-xs text-muted-foreground">Right Motor</Label>
+                              <Label htmlFor="motorFR" className="text-xs text-muted-foreground">Right Front</Label>
                               <Input
                                 id="motorFR"
-                                placeholder="rightMotor"
+                                placeholder="rightFront"
                                 value={createFormData.motorFR}
                                 onChange={(e) => setCreateFormData({ ...createFormData, motorFR: e.target.value })}
+                                className="bg-background/50 mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="motorBL" className="text-xs text-muted-foreground">Left Back</Label>
+                              <Input
+                                id="motorBL"
+                                placeholder="leftBack"
+                                value={createFormData.motorBL}
+                                onChange={(e) => setCreateFormData({ ...createFormData, motorBL: e.target.value })}
+                                className="bg-background/50 mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="motorBR" className="text-xs text-muted-foreground">Right Back</Label>
+                              <Input
+                                id="motorBR"
+                                placeholder="rightBack"
+                                value={createFormData.motorBR}
+                                onChange={(e) => setCreateFormData({ ...createFormData, motorBR: e.target.value })}
                                 className="bg-background/50 mt-1"
                               />
                             </div>
