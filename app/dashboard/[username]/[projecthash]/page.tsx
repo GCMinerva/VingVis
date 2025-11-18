@@ -805,6 +805,52 @@ function CurvesEditorInner() {
     orderedNodes.forEach(node => {
       const data = node.data
 
+      // Update drive motor speeds from movement blocks (mecanum drive)
+      // Using signed values: positive = forward, negative = backward
+      if (data.type === 'forward') {
+        const power = data.power !== undefined ? data.power : 0.75
+        newMotorSpeeds['motorFL'] = power   // All motors forward
+        newMotorSpeeds['motorFR'] = power
+        newMotorSpeeds['motorBL'] = power
+        newMotorSpeeds['motorBR'] = power
+      } else if (data.type === 'backward') {
+        const power = data.power !== undefined ? data.power : 0.75
+        newMotorSpeeds['motorFL'] = power   // All motors backward (shown as positive for backward movement)
+        newMotorSpeeds['motorFR'] = power
+        newMotorSpeeds['motorBL'] = power
+        newMotorSpeeds['motorBR'] = power
+      } else if (data.type === 'strafeLeft') {
+        const power = data.power !== undefined ? data.power : 0.75
+        newMotorSpeeds['motorFL'] = power    // Front left forward
+        newMotorSpeeds['motorFR'] = -power   // Front right backward (negative)
+        newMotorSpeeds['motorBL'] = -power   // Back left backward (negative)
+        newMotorSpeeds['motorBR'] = power    // Back right forward
+      } else if (data.type === 'strafeRight') {
+        const power = data.power !== undefined ? data.power : 0.75
+        newMotorSpeeds['motorFL'] = -power   // Front left backward (negative)
+        newMotorSpeeds['motorFR'] = power    // Front right forward
+        newMotorSpeeds['motorBL'] = power    // Back left forward
+        newMotorSpeeds['motorBR'] = -power   // Back right backward (negative)
+      } else if (data.type === 'turnLeft') {
+        const power = data.power !== undefined ? data.power : 0.5
+        newMotorSpeeds['motorFL'] = -power   // Left motors backward (negative)
+        newMotorSpeeds['motorFR'] = power    // Right motors forward
+        newMotorSpeeds['motorBL'] = -power
+        newMotorSpeeds['motorBR'] = power
+      } else if (data.type === 'turnRight') {
+        const power = data.power !== undefined ? data.power : 0.5
+        newMotorSpeeds['motorFL'] = power    // Left motors forward
+        newMotorSpeeds['motorFR'] = -power   // Right motors backward (negative)
+        newMotorSpeeds['motorBL'] = power
+        newMotorSpeeds['motorBR'] = -power
+      } else if (data.type === 'stop') {
+        // Stop all drive motors
+        newMotorSpeeds['motorFL'] = 0
+        newMotorSpeeds['motorFR'] = 0
+        newMotorSpeeds['motorBL'] = 0
+        newMotorSpeeds['motorBR'] = 0
+      }
+
       // Update servo positions from servo blocks
       if (data.type === 'setServo' || data.type === 'continuousServo') {
         const servoName = data.servoName || servos[0]?.name
@@ -814,7 +860,7 @@ function CurvesEditorInner() {
         }
       }
 
-      // Update motor speeds from motor blocks
+      // Update mechanism motor speeds from motor blocks
       if (data.type === 'runMotor' || data.type === 'setMotorPower') {
         const motorName = data.motorName || motors[4]?.name
         const power = data.power !== undefined ? data.power : 0.5
@@ -823,7 +869,7 @@ function CurvesEditorInner() {
         }
       }
 
-      // Reset motor speed when stop motor is called
+      // Reset mechanism motor speed when stop motor is called
       if (data.type === 'stopMotor') {
         const motorName = data.motorName || motors[4]?.name
         if (motorName) {
