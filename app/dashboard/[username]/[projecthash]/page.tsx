@@ -304,7 +304,7 @@ function CurvesEditorInner() {
   // Refs for smooth dragging/resizing without causing re-renders
   const sidebarRef = useRef<HTMLDivElement>(null)
   const dragOffsetRef = useRef({ x: 0, y: 0 })
-  const animationFrameRef = useRef<number | null>(null)
+  const sidebarAnimationFrameRef = useRef<number | null>(null)
   const currentWidthRef = useRef(320)
   const currentPositionRef = useRef({ x: 0, y: 0 })
 
@@ -457,12 +457,12 @@ function CurvesEditorInner() {
     if (!isResizingSidebar || !sidebarRef.current) return
 
     // Cancel any pending animation frame
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current)
+    if (sidebarAnimationFrameRef.current) {
+      cancelAnimationFrame(sidebarAnimationFrameRef.current)
     }
 
     // Use RAF for smooth updates
-    animationFrameRef.current = requestAnimationFrame(() => {
+    sidebarAnimationFrameRef.current = requestAnimationFrame(() => {
       const baseX = isSidebarFloating ? currentPositionRef.current.x : 0
       const newWidth = Math.max(250, Math.min(600, e.clientX - baseX))
       currentWidthRef.current = newWidth
@@ -475,8 +475,8 @@ function CurvesEditorInner() {
   }, [isResizingSidebar, isSidebarFloating])
 
   const handleResizeEnd = useCallback(() => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current)
+    if (sidebarAnimationFrameRef.current) {
+      cancelAnimationFrame(sidebarAnimationFrameRef.current)
     }
     setIsResizingSidebar(false)
     // Update state once at the end
@@ -500,12 +500,12 @@ function CurvesEditorInner() {
     if (!isDraggingSidebar || !sidebarRef.current) return
 
     // Cancel any pending animation frame
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current)
+    if (sidebarAnimationFrameRef.current) {
+      cancelAnimationFrame(sidebarAnimationFrameRef.current)
     }
 
     // Use RAF for smooth updates
-    animationFrameRef.current = requestAnimationFrame(() => {
+    sidebarAnimationFrameRef.current = requestAnimationFrame(() => {
       const newX = e.clientX - dragOffsetRef.current.x
       const newY = e.clientY - dragOffsetRef.current.y
       currentPositionRef.current = { x: newX, y: newY }
@@ -519,8 +519,8 @@ function CurvesEditorInner() {
   }, [isDraggingSidebar])
 
   const handleDragEnd = useCallback(() => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current)
+    if (sidebarAnimationFrameRef.current) {
+      cancelAnimationFrame(sidebarAnimationFrameRef.current)
     }
     setIsDraggingSidebar(false)
     // Update state once at the end
@@ -559,8 +559,8 @@ function CurvesEditorInner() {
   // Cleanup animation frame on unmount
   useEffect(() => {
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current)
+      if (sidebarAnimationFrameRef.current) {
+        cancelAnimationFrame(sidebarAnimationFrameRef.current)
       }
     }
   }, [])
@@ -2967,56 +2967,30 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                       {controlServos.map((servo) => (
                         <div
                           key={`control-servo-${servo.port}`}
-                          onClick={() => {
-                            const newServos = [...controlServos]
-                            newServos[servo.port].enabled = !newServos[servo.port].enabled
-                            setControlServos(newServos)
-                          }}
-                          className={`p-2 rounded border cursor-pointer transition-all ${
+                          onClick={() => openConfigDialog('servo', 'control', servo.port)}
+                          className={`p-3 rounded border cursor-pointer transition-all hover:scale-105 ${
                             servo.enabled
                               ? 'bg-green-900/30 border-green-600 hover:bg-green-900/40'
-                              : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50'
+                              : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50 hover:border-zinc-600'
                           }`}
                         >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-mono text-zinc-400">Port {servo.port}</span>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-mono font-bold text-zinc-300">Port {servo.port}</span>
                             {servo.enabled ? (
-                              <span className="text-[9px] text-green-400">●</span>
+                              <span className="text-[9px] text-green-400 font-semibold">● ON</span>
                             ) : (
-                              <span className="text-[9px] text-zinc-500">○</span>
+                              <span className="text-[9px] text-zinc-500">○ Empty</span>
                             )}
                           </div>
-                          {servo.enabled ? (
-                            <div onClick={(e) => e.stopPropagation()} className="space-y-1">
-                              <Input
-                                value={servo.name}
-                                onChange={(e) => {
-                                  const newServos = [...controlServos]
-                                  newServos[servo.port].name = e.target.value
-                                  setControlServos(newServos)
-                                }}
-                                className="h-6 text-[10px] bg-zinc-900"
-                                placeholder="Servo name"
-                              />
-                              <Select
-                                value={servo.type}
-                                onValueChange={(v: 'standard' | 'continuous') => {
-                                  const newServos = [...controlServos]
-                                  newServos[servo.port].type = v
-                                  setControlServos(newServos)
-                                }}
-                              >
-                                <SelectTrigger className="h-6 w-full text-[10px]">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="standard">Standard</SelectItem>
-                                  <SelectItem value="continuous">Continuous</SelectItem>
-                                </SelectContent>
-                              </Select>
+                          {servo.enabled && (
+                            <div className="space-y-0.5">
+                              <div className="text-[10px] text-green-200 font-medium truncate">{servo.name}</div>
+                              <div className="text-[9px] text-zinc-400">{servo.type === 'continuous' ? '↻ Continuous' : '↔ Standard'}</div>
                             </div>
-                          ) : (
-                            <div className="text-[10px] text-zinc-500 text-center py-1">
+                          )}
+                          {!servo.enabled && (
+                            <div className="text-[10px] text-zinc-500 text-center">
+                              <Plus className="h-3 w-3 mx-auto mb-0.5" />
                               Click
                             </div>
                           )}
@@ -4381,12 +4355,218 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
               )
             })()}
 
-            {/* Add other device type configurations similarly... */}
-            {(configDialogType === 'i2c' || configDialogType === 'digital' || configDialogType === 'analog') && (
-              <div className="text-center text-zinc-500 py-4">
-                Configuration for {configDialogType} devices coming soon...
-              </div>
-            )}
+            {/* I2C Configuration */}
+            {configDialogType === 'i2c' && (() => {
+              const i2cArray = configDialogHub === 'control' ? controlI2C : expansionI2C
+              const setI2CArray = configDialogHub === 'control' ? setControlI2C : setExpansionI2C
+              const device = i2cArray[configDialogPort]
+
+              return (
+                <>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-white">Enable I2C Device</Label>
+                    <Switch
+                      checked={device.enabled}
+                      onCheckedChange={(checked) => {
+                        const newDevices = [...i2cArray]
+                        newDevices[configDialogPort].enabled = checked
+                        setI2CArray(newDevices)
+                      }}
+                      disabled={configDialogPort === 0}
+                    />
+                  </div>
+
+                  {configDialogPort === 0 && (
+                    <div className="text-xs text-blue-400 bg-blue-900/20 p-2 rounded border border-blue-700/50">
+                      Bus 0 has a built-in IMU (BNO055) that is always enabled
+                    </div>
+                  )}
+
+                  {device.enabled && (
+                    <>
+                      <div>
+                        <Label className="text-white">Device Name</Label>
+                        <Input
+                          value={device.name}
+                          onChange={(e) => {
+                            const newDevices = [...i2cArray]
+                            newDevices[configDialogPort].name = e.target.value
+                            setI2CArray(newDevices)
+                          }}
+                          className="mt-1 bg-zinc-800 border-zinc-700 text-white"
+                          placeholder="e.g. colorSensor"
+                          disabled={configDialogPort === 0}
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-white">Device Type</Label>
+                        <Select
+                          value={device.type}
+                          onValueChange={(v: 'imu' | 'distance' | 'color' | 'servo-controller' | 'color-range') => {
+                            const newDevices = [...i2cArray]
+                            newDevices[configDialogPort].type = v
+                            setI2CArray(newDevices)
+                          }}
+                          disabled={configDialogPort === 0}
+                        >
+                          <SelectTrigger className="mt-1 bg-zinc-800 border-zinc-700 text-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="imu">IMU (BNO055)</SelectItem>
+                            <SelectItem value="distance">Distance Sensor</SelectItem>
+                            <SelectItem value="color">Color Sensor</SelectItem>
+                            <SelectItem value="color-range">REV Color/Range Sensor</SelectItem>
+                            <SelectItem value="servo-controller">Servo Controller</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label className="text-white">I2C Address (hex)</Label>
+                        <Input
+                          value={device.address}
+                          onChange={(e) => {
+                            const newDevices = [...i2cArray]
+                            newDevices[configDialogPort].address = e.target.value
+                            setI2CArray(newDevices)
+                          }}
+                          className="mt-1 bg-zinc-800 border-zinc-700 text-white font-mono"
+                          placeholder="0x28"
+                          disabled={configDialogPort === 0}
+                        />
+                      </div>
+                    </>
+                  )}
+                </>
+              )
+            })()}
+
+            {/* Digital Sensor Configuration */}
+            {configDialogType === 'digital' && (() => {
+              const digitalArray = configDialogHub === 'control' ? controlDigital : expansionDigital
+              const setDigitalArray = configDialogHub === 'control' ? setControlDigital : setExpansionDigital
+              const device = digitalArray[configDialogPort]
+
+              return (
+                <>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-white">Enable Digital Sensor</Label>
+                    <Switch
+                      checked={device.enabled}
+                      onCheckedChange={(checked) => {
+                        const newDevices = [...digitalArray]
+                        newDevices[configDialogPort].enabled = checked
+                        setDigitalArray(newDevices)
+                      }}
+                    />
+                  </div>
+
+                  {device.enabled && (
+                    <>
+                      <div>
+                        <Label className="text-white">Sensor Name</Label>
+                        <Input
+                          value={device.name}
+                          onChange={(e) => {
+                            const newDevices = [...digitalArray]
+                            newDevices[configDialogPort].name = e.target.value
+                            setDigitalArray(newDevices)
+                          }}
+                          className="mt-1 bg-zinc-800 border-zinc-700 text-white"
+                          placeholder="e.g. touchSensor"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-white">Sensor Type</Label>
+                        <Select
+                          value={device.type}
+                          onValueChange={(v: 'touch' | 'limit-switch' | 'magnetic' | 'led') => {
+                            const newDevices = [...digitalArray]
+                            newDevices[configDialogPort].type = v
+                            setDigitalArray(newDevices)
+                          }}
+                        >
+                          <SelectTrigger className="mt-1 bg-zinc-800 border-zinc-700 text-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="touch">Touch Sensor</SelectItem>
+                            <SelectItem value="limit-switch">Limit Switch</SelectItem>
+                            <SelectItem value="magnetic">Magnetic Sensor</SelectItem>
+                            <SelectItem value="led">LED Indicator</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
+                </>
+              )
+            })()}
+
+            {/* Analog Sensor Configuration */}
+            {configDialogType === 'analog' && (() => {
+              const analogArray = configDialogHub === 'control' ? controlAnalog : expansionAnalog
+              const setAnalogArray = configDialogHub === 'control' ? setControlAnalog : setExpansionAnalog
+              const device = analogArray[configDialogPort]
+
+              return (
+                <>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-white">Enable Analog Sensor</Label>
+                    <Switch
+                      checked={device.enabled}
+                      onCheckedChange={(checked) => {
+                        const newDevices = [...analogArray]
+                        newDevices[configDialogPort].enabled = checked
+                        setAnalogArray(newDevices)
+                      }}
+                    />
+                  </div>
+
+                  {device.enabled && (
+                    <>
+                      <div>
+                        <Label className="text-white">Sensor Name</Label>
+                        <Input
+                          value={device.name}
+                          onChange={(e) => {
+                            const newDevices = [...analogArray]
+                            newDevices[configDialogPort].name = e.target.value
+                            setAnalogArray(newDevices)
+                          }}
+                          className="mt-1 bg-zinc-800 border-zinc-700 text-white"
+                          placeholder="e.g. potentiometer"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-white">Sensor Type</Label>
+                        <Select
+                          value={device.type}
+                          onValueChange={(v: 'potentiometer' | 'light-sensor' | 'ultrasonic') => {
+                            const newDevices = [...analogArray]
+                            newDevices[configDialogPort].type = v
+                            setAnalogArray(newDevices)
+                          }}
+                        >
+                          <SelectTrigger className="mt-1 bg-zinc-800 border-zinc-700 text-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="potentiometer">Potentiometer</SelectItem>
+                            <SelectItem value="light-sensor">Light Sensor</SelectItem>
+                            <SelectItem value="ultrasonic">Ultrasonic Sensor</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
+                </>
+              )
+            })()}
           </div>
 
           <div className="flex justify-end gap-2">
