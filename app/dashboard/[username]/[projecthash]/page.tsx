@@ -311,7 +311,7 @@ function CurvesEditorInner() {
   const currentPositionRef = useRef({ x: 0, y: 0 })
 
   // Hardware configuration dialog states
-  type ConfigDialogType = 'motor' | 'servo' | 'i2c' | 'digital' | 'analog' | null
+  type ConfigDialogType = 'motor' | 'servo' | 'i2c' | 'digital' | 'analog' | 'expansion-hub' | null
   const [configDialogOpen, setConfigDialogOpen] = useState(false)
   const [configDialogType, setConfigDialogType] = useState<ConfigDialogType>(null)
   const [configDialogHub, setConfigDialogHub] = useState<'control' | 'expansion'>('control')
@@ -3053,13 +3053,20 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                 <div className="p-3">
                 <div className="space-y-4">
                 {/* Expansion Hub Toggle */}
-                <div className="p-3 bg-zinc-800/50 rounded border border-zinc-700">
-                  <label className="flex items-center justify-between cursor-pointer">
+                <div
+                  onClick={() => openConfigDialog('expansion-hub', 'control', 0)}
+                  className={`p-3 rounded border cursor-pointer transition-all hover:scale-105 ${
+                    hasExpansionHub
+                      ? 'bg-blue-900/30 border-blue-600 hover:bg-blue-900/40'
+                      : 'bg-zinc-800/50 border-zinc-700 hover:bg-zinc-800/70 hover:border-zinc-600'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-white">Expansion Hub</span>
-                    <Switch checked={hasExpansionHub} onCheckedChange={setHasExpansionHub} />
-                  </label>
+                    <div className={`w-2 h-2 rounded-full ${hasExpansionHub ? 'bg-green-500' : 'bg-zinc-600'}`} />
+                  </div>
                   <div className="text-[10px] text-zinc-500 mt-1">
-                    Enable second hub for additional ports
+                    {hasExpansionHub ? 'Enabled - Click to configure' : 'Click to enable second hub'}
                   </div>
                 </div>
 
@@ -3117,54 +3124,31 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                         {expansionMotors.map((motor) => (
                           <div
                             key={`expansion-motor-${motor.port}`}
-                            onClick={() => {
-                              const newMotors = [...expansionMotors]
-                              newMotors[motor.port].enabled = !newMotors[motor.port].enabled
-                              setExpansionMotors(newMotors)
-                            }}
-                            className={`p-2 rounded border cursor-pointer transition-all ${
+                            onClick={() => openConfigDialog('motor', 'expansion', motor.port)}
+                            className={`p-3 rounded border cursor-pointer transition-all hover:scale-105 ${
                               motor.enabled
                                 ? 'bg-blue-900/30 border-blue-600 hover:bg-blue-900/40'
-                                : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50'
+                                : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50 hover:border-zinc-600'
                             }`}
                           >
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-[10px] font-mono text-zinc-400">Port {motor.port}</span>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[11px] font-mono font-bold text-zinc-300">Port {motor.port}</span>
                               {motor.enabled ? (
-                                <span className="text-[9px] text-blue-400">● Configured</span>
+                                <span className="text-[9px] text-blue-400 font-semibold">● ON</span>
                               ) : (
                                 <span className="text-[9px] text-zinc-500">○ Empty</span>
                               )}
                             </div>
-                            {motor.enabled ? (
-                              <div onClick={(e) => e.stopPropagation()} className="space-y-1">
-                                <Input
-                                  value={motor.name}
-                                  onChange={(e) => {
-                                    const newMotors = [...expansionMotors]
-                                    newMotors[motor.port].name = e.target.value
-                                    setExpansionMotors(newMotors)
-                                  }}
-                                  className="h-6 text-[10px] bg-zinc-900"
-                                  placeholder="Motor name"
-                                />
-                                <label className="flex items-center gap-1 cursor-pointer text-[10px] text-zinc-400">
-                                  <input
-                                    type="checkbox"
-                                    checked={motor.reversed}
-                                    onChange={(e) => {
-                                      const newMotors = [...expansionMotors]
-                                      newMotors[motor.port].reversed = e.target.checked
-                                      setExpansionMotors(newMotors)
-                                    }}
-                                    className="w-3 h-3"
-                                  />
-                                  Reversed
-                                </label>
+                            {motor.enabled && (
+                              <div className="space-y-0.5">
+                                <div className="text-[10px] text-blue-200 font-medium truncate">{motor.name}</div>
+                                {motor.reversed && <div className="text-[9px] text-orange-400">↻ Reversed</div>}
                               </div>
-                            ) : (
-                              <div className="text-[10px] text-zinc-500 text-center py-1">
-                                Click to configure
+                            )}
+                            {!motor.enabled && (
+                              <div className="text-[10px] text-zinc-500 text-center">
+                                <Plus className="h-3 w-3 mx-auto mb-0.5" />
+                                Click
                               </div>
                             )}
                           </div>
@@ -4354,19 +4338,23 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
         <DialogContent className="max-w-md bg-zinc-900 border-zinc-800">
           <DialogHeader>
             <DialogTitle className="text-white">
-              Configure {configDialogHub === 'control' ? 'Control' : 'Expansion'} Hub -{' '}
-              {configDialogType === 'motor' && `Motor Port ${configDialogPort}`}
-              {configDialogType === 'servo' && `Servo Port ${configDialogPort}`}
-              {configDialogType === 'i2c' && `I2C Bus ${configDialogPort}`}
-              {configDialogType === 'digital' && `Digital Port ${configDialogPort}`}
-              {configDialogType === 'analog' && `Analog Port ${configDialogPort}`}
+              {configDialogType === 'expansion-hub' ? 'Expansion Hub Configuration' : (
+                <>
+                  Configure {configDialogHub === 'control' ? 'Control' : 'Expansion'} Hub -{' '}
+                  {configDialogType === 'motor' && `Motor Port ${configDialogPort}`}
+                  {configDialogType === 'servo' && `Servo Port ${configDialogPort}`}
+                  {configDialogType === 'i2c' && `I2C Bus ${configDialogPort}`}
+                  {configDialogType === 'digital' && `Digital Port ${configDialogPort}`}
+                  {configDialogType === 'analog' && `Analog Port ${configDialogPort}`}
+                </>
+              )}
             </DialogTitle>
             <DialogDescription className="text-zinc-400">
               Configure your hardware device settings below.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
             {/* Motor Configuration */}
             {configDialogType === 'motor' && (() => {
               const motorArray = configDialogHub === 'control' ? controlMotors : expansionMotors
@@ -4708,6 +4696,48 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                 </>
               )
             })()}
+
+            {/* Expansion Hub Configuration */}
+            {configDialogType === 'expansion-hub' && (
+              <>
+                <div className="flex items-center justify-between">
+                  <Label className="text-white">Enable Expansion Hub</Label>
+                  <Switch
+                    checked={hasExpansionHub}
+                    onCheckedChange={setHasExpansionHub}
+                  />
+                </div>
+
+                {/* REV Robotics Expansion Hub Image */}
+                <div className="flex justify-center bg-zinc-800/30 rounded border border-zinc-700 p-2">
+                  <img
+                    src="https://docs.revrobotics.com/~gitbook/image?url=https%3A%2F%2F1359443677-files.gitbook.io%2F%7E%2Ffiles%2Fv0%2Fb%2Fgitbook-legacy-files%2Fo%2Fassets%252Fftc-control-system%252F-M8MwLCHioGUmBeHgdmq%252F-M8N18g7FA00YUtTVAaT%252F38.png%3Fgeneration%3D1590614867952389%26alt%3Dmedia&width=300&dpr=4&quality=100&sign=c44f7f9&sv=2"
+                    alt="REV Robotics Expansion Hub"
+                    className="w-48 h-auto rounded"
+                  />
+                </div>
+
+                <div className="text-xs text-zinc-400 bg-zinc-800/50 p-3 rounded border border-zinc-700">
+                  <p className="font-semibold mb-2">About Expansion Hub</p>
+                  <p className="mb-2">
+                    The Expansion Hub provides additional ports for your FTC robot:
+                  </p>
+                  <ul className="list-disc list-inside space-y-1 text-[10px]">
+                    <li>4 additional motor ports (0-3)</li>
+                    <li>6 additional servo ports (0-5)</li>
+                    <li>4 additional I2C buses (0-3)</li>
+                    <li>8 additional digital I/O ports (0-7)</li>
+                    <li>4 additional analog input ports (0-3)</li>
+                  </ul>
+                </div>
+
+                {hasExpansionHub && (
+                  <div className="text-xs text-green-400 bg-green-900/20 p-3 rounded border border-green-800">
+                    Expansion Hub is enabled. Configure individual ports in the hardware tabs above.
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div className="flex justify-end gap-2">
