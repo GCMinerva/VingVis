@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
 import { AlertCircle, Plus, Settings, Trash2, ExternalLink, LogOut, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { DriveTrainSelector } from "@/components/drivetrain-selector"
@@ -38,12 +39,13 @@ export default function DashboardPage() {
   const [createFormData, setCreateFormData] = useState({
     name: "",
     templateType: "omni-wheel" as DriveTrainType,
-    motorFL: "frontLeft",
-    motorFR: "frontRight",
-    motorBL: "backLeft",
-    motorBR: "backRight",
-    motorCL: "centerStrafe",
-    motorCR: "",
+    motors: {
+      motorFL: { name: "frontLeft", port: 0, hub: "control" as "control" | "expansion" },
+      motorFR: { name: "frontRight", port: 1, hub: "control" as "control" | "expansion" },
+      motorBL: { name: "backLeft", port: 2, hub: "control" as "control" | "expansion" },
+      motorBR: { name: "backRight", port: 3, hub: "control" as "control" | "expansion" },
+      motorCL: { name: "centerStrafe", port: 0, hub: "expansion" as "control" | "expansion" },
+    }
   })
 
   useEffect(() => {
@@ -151,12 +153,13 @@ export default function DashboardPage() {
         setCreateFormData({
           name: "",
           templateType: "omni-wheel",
-          motorFL: "frontLeft",
-          motorFR: "frontRight",
-          motorBL: "backLeft",
-          motorBR: "backRight",
-          motorCL: "centerStrafe",
-          motorCR: "",
+          motors: {
+            motorFL: { name: "frontLeft", port: 0, hub: "control" },
+            motorFR: { name: "frontRight", port: 1, hub: "control" },
+            motorBL: { name: "backLeft", port: 2, hub: "control" },
+            motorBR: { name: "backRight", port: 3, hub: "control" },
+            motorCL: { name: "centerStrafe", port: 0, hub: "expansion" },
+          }
         })
 
         // Enable guest mode in session and navigate
@@ -169,15 +172,15 @@ export default function DashboardPage() {
 
       // Authenticated mode - save to database
       const motorConfig: any = {
-        fl: createFormData.motorFL,
-        fr: createFormData.motorFR,
-        bl: createFormData.motorBL,
-        br: createFormData.motorBR,
+        fl: createFormData.motors.motorFL,
+        fr: createFormData.motors.motorFR,
+        bl: createFormData.motors.motorBL,
+        br: createFormData.motors.motorBR,
       }
 
       // Add additional motors for H-Drive and Swerve
       if (createFormData.templateType === 'h-drive') {
-        motorConfig.cl = createFormData.motorCL
+        motorConfig.cl = createFormData.motors.motorCL
       }
 
       const { error } = await supabase.from('projects').insert({
@@ -196,12 +199,13 @@ export default function DashboardPage() {
       setCreateFormData({
         name: "",
         templateType: "omni-wheel",
-        motorFL: "frontLeft",
-        motorFR: "frontRight",
-        motorBL: "backLeft",
-        motorBR: "backRight",
-        motorCL: "centerStrafe",
-        motorCR: "",
+        motors: {
+          motorFL: { name: "frontLeft", port: 0, hub: "control" },
+          motorFR: { name: "frontRight", port: 1, hub: "control" },
+          motorBL: { name: "backLeft", port: 2, hub: "control" },
+          motorBR: { name: "backRight", port: 3, hub: "control" },
+          motorCL: { name: "centerStrafe", port: 0, hub: "expansion" },
+        }
       })
       loadProjects()
 
@@ -322,9 +326,10 @@ export default function DashboardPage() {
                     />
                   </div>
                 ) : (
-                  <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="projectName">Project Name</Label>
+                  <div className="flex-1 overflow-y-auto py-4 px-1">
+                    <div className="space-y-4 max-w-2xl mx-auto">
+                      <div className="space-y-2">
+                        <Label htmlFor="projectName">Project Name</Label>
                       <Input
                         id="projectName"
                         placeholder="My Awesome Robot"
@@ -346,110 +351,363 @@ export default function DashboardPage() {
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label>Motor Configuration</Label>
-                      <div className="grid grid-cols-2 gap-3">
-                        {createFormData.templateType !== 'tank-drive' && (
-                          <>
-                            <div>
-                              <Label htmlFor="motorFL" className="text-xs text-muted-foreground">Front Left</Label>
+                    <div className="space-y-3">
+                      <Label className="text-base">Motor Configuration</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Configure motor names and assign them to hardware ports
+                      </p>
+                      <div className="space-y-4">
+                        {/* Motor FL */}
+                        <div className="p-3 rounded-lg border border-border/50 bg-zinc-900/30 space-y-2">
+                          <Label className="text-sm font-semibold">
+                            {createFormData.templateType === 'tank-drive' ? 'Left Front Motor' : 'Front Left Motor'}
+                          </Label>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="col-span-3 sm:col-span-1">
+                              <Label htmlFor="motorFL-name" className="text-xs text-muted-foreground">Motor Name</Label>
                               <Input
-                                id="motorFL"
-                                placeholder="frontLeft"
-                                value={createFormData.motorFL}
-                                onChange={(e) => setCreateFormData({ ...createFormData, motorFL: e.target.value })}
-                                className="bg-background/50 mt-1"
+                                id="motorFL-name"
+                                placeholder={createFormData.templateType === 'tank-drive' ? "leftFront" : "frontLeft"}
+                                value={createFormData.motors.motorFL.name}
+                                onChange={(e) => setCreateFormData({
+                                  ...createFormData,
+                                  motors: {
+                                    ...createFormData.motors,
+                                    motorFL: { ...createFormData.motors.motorFL, name: e.target.value }
+                                  }
+                                })}
+                                className="bg-background/50 mt-1 h-9"
                               />
                             </div>
                             <div>
-                              <Label htmlFor="motorFR" className="text-xs text-muted-foreground">Front Right</Label>
+                              <Label htmlFor="motorFL-port" className="text-xs text-muted-foreground">Port</Label>
+                              <Select
+                                value={createFormData.motors.motorFL.port.toString()}
+                                onValueChange={(value) => setCreateFormData({
+                                  ...createFormData,
+                                  motors: {
+                                    ...createFormData.motors,
+                                    motorFL: { ...createFormData.motors.motorFL, port: parseInt(value) }
+                                  }
+                                })}
+                              >
+                                <SelectTrigger className="bg-background/50 mt-1 h-9">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="0">Port 0</SelectItem>
+                                  <SelectItem value="1">Port 1</SelectItem>
+                                  <SelectItem value="2">Port 2</SelectItem>
+                                  <SelectItem value="3">Port 3</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor="motorFL-hub" className="text-xs text-muted-foreground">Hub</Label>
+                              <Select
+                                value={createFormData.motors.motorFL.hub}
+                                onValueChange={(value: "control" | "expansion") => setCreateFormData({
+                                  ...createFormData,
+                                  motors: {
+                                    ...createFormData.motors,
+                                    motorFL: { ...createFormData.motors.motorFL, hub: value }
+                                  }
+                                })}
+                              >
+                                <SelectTrigger className="bg-background/50 mt-1 h-9">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="control">Control</SelectItem>
+                                  <SelectItem value="expansion">Expansion</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Motor FR */}
+                        <div className="p-3 rounded-lg border border-border/50 bg-zinc-900/30 space-y-2">
+                          <Label className="text-sm font-semibold">
+                            {createFormData.templateType === 'tank-drive' ? 'Right Front Motor' : 'Front Right Motor'}
+                          </Label>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="col-span-3 sm:col-span-1">
+                              <Label htmlFor="motorFR-name" className="text-xs text-muted-foreground">Motor Name</Label>
                               <Input
-                                id="motorFR"
-                                placeholder="frontRight"
-                                value={createFormData.motorFR}
-                                onChange={(e) => setCreateFormData({ ...createFormData, motorFR: e.target.value })}
-                                className="bg-background/50 mt-1"
+                                id="motorFR-name"
+                                placeholder={createFormData.templateType === 'tank-drive' ? "rightFront" : "frontRight"}
+                                value={createFormData.motors.motorFR.name}
+                                onChange={(e) => setCreateFormData({
+                                  ...createFormData,
+                                  motors: {
+                                    ...createFormData.motors,
+                                    motorFR: { ...createFormData.motors.motorFR, name: e.target.value }
+                                  }
+                                })}
+                                className="bg-background/50 mt-1 h-9"
                               />
                             </div>
                             <div>
-                              <Label htmlFor="motorBL" className="text-xs text-muted-foreground">Back Left</Label>
+                              <Label htmlFor="motorFR-port" className="text-xs text-muted-foreground">Port</Label>
+                              <Select
+                                value={createFormData.motors.motorFR.port.toString()}
+                                onValueChange={(value) => setCreateFormData({
+                                  ...createFormData,
+                                  motors: {
+                                    ...createFormData.motors,
+                                    motorFR: { ...createFormData.motors.motorFR, port: parseInt(value) }
+                                  }
+                                })}
+                              >
+                                <SelectTrigger className="bg-background/50 mt-1 h-9">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="0">Port 0</SelectItem>
+                                  <SelectItem value="1">Port 1</SelectItem>
+                                  <SelectItem value="2">Port 2</SelectItem>
+                                  <SelectItem value="3">Port 3</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor="motorFR-hub" className="text-xs text-muted-foreground">Hub</Label>
+                              <Select
+                                value={createFormData.motors.motorFR.hub}
+                                onValueChange={(value: "control" | "expansion") => setCreateFormData({
+                                  ...createFormData,
+                                  motors: {
+                                    ...createFormData.motors,
+                                    motorFR: { ...createFormData.motors.motorFR, hub: value }
+                                  }
+                                })}
+                              >
+                                <SelectTrigger className="bg-background/50 mt-1 h-9">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="control">Control</SelectItem>
+                                  <SelectItem value="expansion">Expansion</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Motor BL */}
+                        <div className="p-3 rounded-lg border border-border/50 bg-zinc-900/30 space-y-2">
+                          <Label className="text-sm font-semibold">
+                            {createFormData.templateType === 'tank-drive' ? 'Left Back Motor' : 'Back Left Motor'}
+                          </Label>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="col-span-3 sm:col-span-1">
+                              <Label htmlFor="motorBL-name" className="text-xs text-muted-foreground">Motor Name</Label>
                               <Input
-                                id="motorBL"
-                                placeholder="backLeft"
-                                value={createFormData.motorBL}
-                                onChange={(e) => setCreateFormData({ ...createFormData, motorBL: e.target.value })}
-                                className="bg-background/50 mt-1"
+                                id="motorBL-name"
+                                placeholder={createFormData.templateType === 'tank-drive' ? "leftBack" : "backLeft"}
+                                value={createFormData.motors.motorBL.name}
+                                onChange={(e) => setCreateFormData({
+                                  ...createFormData,
+                                  motors: {
+                                    ...createFormData.motors,
+                                    motorBL: { ...createFormData.motors.motorBL, name: e.target.value }
+                                  }
+                                })}
+                                className="bg-background/50 mt-1 h-9"
                               />
                             </div>
                             <div>
-                              <Label htmlFor="motorBR" className="text-xs text-muted-foreground">Back Right</Label>
-                              <Input
-                                id="motorBR"
-                                placeholder="backRight"
-                                value={createFormData.motorBR}
-                                onChange={(e) => setCreateFormData({ ...createFormData, motorBR: e.target.value })}
-                                className="bg-background/50 mt-1"
-                              />
-                            </div>
-                          </>
-                        )}
-                        {createFormData.templateType === 'tank-drive' && (
-                          <>
-                            <div>
-                              <Label htmlFor="motorFL" className="text-xs text-muted-foreground">Left Front</Label>
-                              <Input
-                                id="motorFL"
-                                placeholder="leftFront"
-                                value={createFormData.motorFL}
-                                onChange={(e) => setCreateFormData({ ...createFormData, motorFL: e.target.value })}
-                                className="bg-background/50 mt-1"
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="motorFR" className="text-xs text-muted-foreground">Right Front</Label>
-                              <Input
-                                id="motorFR"
-                                placeholder="rightFront"
-                                value={createFormData.motorFR}
-                                onChange={(e) => setCreateFormData({ ...createFormData, motorFR: e.target.value })}
-                                className="bg-background/50 mt-1"
-                              />
+                              <Label htmlFor="motorBL-port" className="text-xs text-muted-foreground">Port</Label>
+                              <Select
+                                value={createFormData.motors.motorBL.port.toString()}
+                                onValueChange={(value) => setCreateFormData({
+                                  ...createFormData,
+                                  motors: {
+                                    ...createFormData.motors,
+                                    motorBL: { ...createFormData.motors.motorBL, port: parseInt(value) }
+                                  }
+                                })}
+                              >
+                                <SelectTrigger className="bg-background/50 mt-1 h-9">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="0">Port 0</SelectItem>
+                                  <SelectItem value="1">Port 1</SelectItem>
+                                  <SelectItem value="2">Port 2</SelectItem>
+                                  <SelectItem value="3">Port 3</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
                             <div>
-                              <Label htmlFor="motorBL" className="text-xs text-muted-foreground">Left Back</Label>
+                              <Label htmlFor="motorBL-hub" className="text-xs text-muted-foreground">Hub</Label>
+                              <Select
+                                value={createFormData.motors.motorBL.hub}
+                                onValueChange={(value: "control" | "expansion") => setCreateFormData({
+                                  ...createFormData,
+                                  motors: {
+                                    ...createFormData.motors,
+                                    motorBL: { ...createFormData.motors.motorBL, hub: value }
+                                  }
+                                })}
+                              >
+                                <SelectTrigger className="bg-background/50 mt-1 h-9">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="control">Control</SelectItem>
+                                  <SelectItem value="expansion">Expansion</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Motor BR */}
+                        <div className="p-3 rounded-lg border border-border/50 bg-zinc-900/30 space-y-2">
+                          <Label className="text-sm font-semibold">
+                            {createFormData.templateType === 'tank-drive' ? 'Right Back Motor' : 'Back Right Motor'}
+                          </Label>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="col-span-3 sm:col-span-1">
+                              <Label htmlFor="motorBR-name" className="text-xs text-muted-foreground">Motor Name</Label>
                               <Input
-                                id="motorBL"
-                                placeholder="leftBack"
-                                value={createFormData.motorBL}
-                                onChange={(e) => setCreateFormData({ ...createFormData, motorBL: e.target.value })}
-                                className="bg-background/50 mt-1"
+                                id="motorBR-name"
+                                placeholder={createFormData.templateType === 'tank-drive' ? "rightBack" : "backRight"}
+                                value={createFormData.motors.motorBR.name}
+                                onChange={(e) => setCreateFormData({
+                                  ...createFormData,
+                                  motors: {
+                                    ...createFormData.motors,
+                                    motorBR: { ...createFormData.motors.motorBR, name: e.target.value }
+                                  }
+                                })}
+                                className="bg-background/50 mt-1 h-9"
                               />
                             </div>
                             <div>
-                              <Label htmlFor="motorBR" className="text-xs text-muted-foreground">Right Back</Label>
-                              <Input
-                                id="motorBR"
-                                placeholder="rightBack"
-                                value={createFormData.motorBR}
-                                onChange={(e) => setCreateFormData({ ...createFormData, motorBR: e.target.value })}
-                                className="bg-background/50 mt-1"
-                              />
+                              <Label htmlFor="motorBR-port" className="text-xs text-muted-foreground">Port</Label>
+                              <Select
+                                value={createFormData.motors.motorBR.port.toString()}
+                                onValueChange={(value) => setCreateFormData({
+                                  ...createFormData,
+                                  motors: {
+                                    ...createFormData.motors,
+                                    motorBR: { ...createFormData.motors.motorBR, port: parseInt(value) }
+                                  }
+                                })}
+                              >
+                                <SelectTrigger className="bg-background/50 mt-1 h-9">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="0">Port 0</SelectItem>
+                                  <SelectItem value="1">Port 1</SelectItem>
+                                  <SelectItem value="2">Port 2</SelectItem>
+                                  <SelectItem value="3">Port 3</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
-                          </>
-                        )}
+                            <div>
+                              <Label htmlFor="motorBR-hub" className="text-xs text-muted-foreground">Hub</Label>
+                              <Select
+                                value={createFormData.motors.motorBR.hub}
+                                onValueChange={(value: "control" | "expansion") => setCreateFormData({
+                                  ...createFormData,
+                                  motors: {
+                                    ...createFormData.motors,
+                                    motorBR: { ...createFormData.motors.motorBR, hub: value }
+                                  }
+                                })}
+                              >
+                                <SelectTrigger className="bg-background/50 mt-1 h-9">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="control">Control</SelectItem>
+                                  <SelectItem value="expansion">Expansion</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* H-Drive Center Motor */}
                         {createFormData.templateType === 'h-drive' && (
-                          <div className="col-span-2">
-                            <Label htmlFor="motorCL" className="text-xs text-muted-foreground">Center Strafe Wheel</Label>
-                            <Input
-                              id="motorCL"
-                              placeholder="centerStrafe"
-                              value={createFormData.motorCL}
-                              onChange={(e) => setCreateFormData({ ...createFormData, motorCL: e.target.value })}
-                              className="bg-background/50 mt-1"
-                            />
+                          <div className="p-3 rounded-lg border border-orange-500/50 bg-orange-900/10 space-y-2">
+                            <Label className="text-sm font-semibold flex items-center gap-2">
+                              Center Strafe Wheel
+                              <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-500 border-orange-500/20">
+                                H-Drive Only
+                              </Badge>
+                            </Label>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="col-span-3 sm:col-span-1">
+                                <Label htmlFor="motorCL-name" className="text-xs text-muted-foreground">Motor Name</Label>
+                                <Input
+                                  id="motorCL-name"
+                                  placeholder="centerStrafe"
+                                  value={createFormData.motors.motorCL.name}
+                                  onChange={(e) => setCreateFormData({
+                                    ...createFormData,
+                                    motors: {
+                                      ...createFormData.motors,
+                                      motorCL: { ...createFormData.motors.motorCL, name: e.target.value }
+                                    }
+                                  })}
+                                  className="bg-background/50 mt-1 h-9"
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="motorCL-port" className="text-xs text-muted-foreground">Port</Label>
+                                <Select
+                                  value={createFormData.motors.motorCL.port.toString()}
+                                  onValueChange={(value) => setCreateFormData({
+                                    ...createFormData,
+                                    motors: {
+                                      ...createFormData.motors,
+                                      motorCL: { ...createFormData.motors.motorCL, port: parseInt(value) }
+                                    }
+                                  })}
+                                >
+                                  <SelectTrigger className="bg-background/50 mt-1 h-9">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="0">Port 0</SelectItem>
+                                    <SelectItem value="1">Port 1</SelectItem>
+                                    <SelectItem value="2">Port 2</SelectItem>
+                                    <SelectItem value="3">Port 3</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label htmlFor="motorCL-hub" className="text-xs text-muted-foreground">Hub</Label>
+                                <Select
+                                  value={createFormData.motors.motorCL.hub}
+                                  onValueChange={(value: "control" | "expansion") => setCreateFormData({
+                                    ...createFormData,
+                                    motors: {
+                                      ...createFormData.motors,
+                                      motorCL: { ...createFormData.motors.motorCL, hub: value }
+                                    }
+                                  })}
+                                >
+                                  <SelectTrigger className="bg-background/50 mt-1 h-9">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="control">Control</SelectItem>
+                                    <SelectItem value="expansion">Expansion</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
+                    </div>
                     </div>
                   </div>
                 )}
