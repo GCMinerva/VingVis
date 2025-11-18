@@ -13,12 +13,13 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertCircle, Plus, Settings, Trash2, ExternalLink, LogOut } from "lucide-react"
 import Link from "next/link"
+import DrivetrainSelector, { type DrivetrainType } from "@/components/drivetrain-selector"
 
 type Project = {
   id: string
   project_hash: string
   name: string
-  template_type: 'omni-wheel' | 'mecanum-wheel'
+  template_type: DrivetrainType
   created_at: string
   updated_at: string
 }
@@ -34,7 +35,7 @@ export default function DashboardPage() {
   const [isGuest, setIsGuest] = useState(false)
   const [createFormData, setCreateFormData] = useState({
     name: "",
-    templateType: "omni-wheel" as 'omni-wheel' | 'mecanum-wheel',
+    templateType: "tank-drive" as DrivetrainType,
     motorFL: "frontLeft",
     motorFR: "frontRight",
     motorBL: "backLeft",
@@ -286,11 +287,11 @@ export default function DashboardPage() {
                   </CardContent>
                 </Card>
               </DialogTrigger>
-              <DialogContent className="bg-background/95 backdrop-blur-sm border-border/50 max-w-md">
+              <DialogContent className="bg-background/95 backdrop-blur-sm border-border/50 max-w-6xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Create New Project</DialogTitle>
                   <DialogDescription>
-                    Choose a template and configure your robot's motor setup
+                    Choose your drivetrain and configure your robot setup
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
@@ -306,25 +307,17 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="template">Robot Template</Label>
-                    <Select
-                      value={createFormData.templateType}
-                      onValueChange={(value: 'omni-wheel' | 'mecanum-wheel') =>
-                        setCreateFormData({ ...createFormData, templateType: value })
+                    <Label>Choose Drivetrain</Label>
+                    <DrivetrainSelector
+                      selectedDrivetrain={createFormData.templateType}
+                      onSelect={(drivetrain) =>
+                        setCreateFormData({ ...createFormData, templateType: drivetrain })
                       }
-                    >
-                      <SelectTrigger className="bg-background/50">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="omni-wheel">4 Omni-Wheel Drive</SelectItem>
-                        <SelectItem value="mecanum-wheel">4 Mecanum-Wheel Drive</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Motor Configuration</Label>
+                    <Label>Motor Configuration (Optional - can be configured later)</Label>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label htmlFor="motorFL" className="text-xs text-muted-foreground">Front Left</Label>

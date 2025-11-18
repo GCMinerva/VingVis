@@ -51,7 +51,7 @@ export type Database = {
           user_id: string
           project_hash: string
           name: string
-          template_type: 'omni-wheel' | 'mecanum-wheel'
+          template_type: 'omni-wheel' | 'mecanum-wheel' | 'tank-drive' | 'holonomic-drive' | 'x-drive' | 'swerve-drive'
           motor_config: any
           workflow_data: any
           created_at: string
@@ -62,7 +62,7 @@ export type Database = {
           user_id: string
           project_hash: string
           name: string
-          template_type: 'omni-wheel' | 'mecanum-wheel'
+          template_type: 'omni-wheel' | 'mecanum-wheel' | 'tank-drive' | 'holonomic-drive' | 'x-drive' | 'swerve-drive'
           motor_config?: any
           workflow_data?: any
           created_at?: string
@@ -73,7 +73,7 @@ export type Database = {
           user_id?: string
           project_hash?: string
           name?: string
-          template_type?: 'omni-wheel' | 'mecanum-wheel'
+          template_type?: 'omni-wheel' | 'mecanum-wheel' | 'tank-drive' | 'holonomic-drive' | 'x-drive' | 'swerve-drive'
           motor_config?: any
           workflow_data?: any
           created_at?: string

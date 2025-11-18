@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
 import { Navbar } from "@/components/navbar"
 import { MathTools } from "@/components/math-tools"
+import { type DrivetrainType } from "@/components/drivetrain-selector"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -88,7 +89,7 @@ import {
 type Project = {
   id: string
   name: string
-  template_type: 'omni-wheel' | 'mecanum-wheel'
+  template_type: DrivetrainType
   motor_config: any
   workflow_data: any
 }
@@ -120,6 +121,7 @@ type Motor = {
   port: number
   reversed: boolean
   hub?: 'control' | 'expansion'
+  hasEncoder?: boolean
 }
 
 type Servo = {
@@ -2629,20 +2631,36 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                             </SelectContent>
                           </Select>
                         )}
-                        <label className="flex items-center gap-1 cursor-pointer text-xs text-zinc-400">
-                          <input
-                            type="checkbox"
-                            checked={motor.reversed}
-                            onChange={(e) => {
-                              const newMotors = [...motors]
-                              newMotors[i].reversed = e.target.checked
-                              setMotors(newMotors)
-                            }}
-                            className="w-3 h-3"
-                            disabled={pathMode === 'pedropathing' && i < 4}
-                          />
-                          Reversed
-                        </label>
+                        <div className="flex gap-3">
+                          <label className="flex items-center gap-1 cursor-pointer text-xs text-zinc-400">
+                            <input
+                              type="checkbox"
+                              checked={motor.reversed}
+                              onChange={(e) => {
+                                const newMotors = [...motors]
+                                newMotors[i].reversed = e.target.checked
+                                setMotors(newMotors)
+                              }}
+                              className="w-3 h-3"
+                              disabled={pathMode === 'pedropathing' && i < 4}
+                            />
+                            Reversed
+                          </label>
+                          <label className="flex items-center gap-1 cursor-pointer text-xs text-zinc-400">
+                            <input
+                              type="checkbox"
+                              checked={motor.hasEncoder || false}
+                              onChange={(e) => {
+                                const newMotors = [...motors]
+                                newMotors[i].hasEncoder = e.target.checked
+                                setMotors(newMotors)
+                              }}
+                              className="w-3 h-3"
+                              disabled={pathMode === 'pedropathing' && i < 4}
+                            />
+                            Has Encoder
+                          </label>
+                        </div>
                       </div>
                     ))}
                   </div>
