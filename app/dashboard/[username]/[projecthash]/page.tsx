@@ -1353,20 +1353,61 @@ function CurvesEditorInner() {
     setDraggedWaypointIndex(null)
   }
 
+  // Ramer-Douglas-Peucker algorithm for intelligent path simplification
+  const simplifyPath = (points: {x: number, y: number}[], epsilon: number = 2): {x: number, y: number}[] => {
+    if (points.length < 3) return points
+
+    // Find the point with the maximum distance from the line between start and end
+    const getPerpendicularDistance = (point: {x: number, y: number}, lineStart: {x: number, y: number}, lineEnd: {x: number, y: number}): number => {
+      const dx = lineEnd.x - lineStart.x
+      const dy = lineEnd.y - lineStart.y
+
+      // If the line is actually a point
+      if (dx === 0 && dy === 0) {
+        return Math.sqrt(Math.pow(point.x - lineStart.x, 2) + Math.pow(point.y - lineStart.y, 2))
+      }
+
+      // Calculate perpendicular distance
+      const numerator = Math.abs(dy * point.x - dx * point.y + lineEnd.x * lineStart.y - lineEnd.y * lineStart.x)
+      const denominator = Math.sqrt(dx * dx + dy * dy)
+      return numerator / denominator
+    }
+
+    let maxDistance = 0
+    let maxIndex = 0
+    const start = points[0]
+    const end = points[points.length - 1]
+
+    // Find the point with maximum distance
+    for (let i = 1; i < points.length - 1; i++) {
+      const distance = getPerpendicularDistance(points[i], start, end)
+      if (distance > maxDistance) {
+        maxDistance = distance
+        maxIndex = i
+      }
+    }
+
+    // If max distance is greater than epsilon, recursively simplify
+    if (maxDistance > epsilon) {
+      // Recursive call on both segments
+      const leftSegment = simplifyPath(points.slice(0, maxIndex + 1), epsilon)
+      const rightSegment = simplifyPath(points.slice(maxIndex), epsilon)
+
+      // Combine results (remove duplicate middle point)
+      return [...leftSegment.slice(0, -1), ...rightSegment]
+    } else {
+      // All points between start and end can be removed
+      return [start, end]
+    }
+  }
+
   const convertDrawnPointsToActions = () => {
     if (drawnPoints.length < 2) return
 
-    // Simplify points - take every Nth point to avoid too many nodes
-    const simplified: {x: number, y: number}[] = []
-    const step = Math.max(1, Math.floor(drawnPoints.length / 10)) // Max 10 waypoints
-
-    for (let i = 0; i < drawnPoints.length; i += step) {
-      simplified.push(drawnPoints[i])
-    }
-    // Always include the last point
-    if (simplified[simplified.length - 1] !== drawnPoints[drawnPoints.length - 1]) {
-      simplified.push(drawnPoints[drawnPoints.length - 1])
-    }
+    // Use Ramer-Douglas-Peucker algorithm for intelligent path simplification
+    // This preserves the path shape while using fewer points
+    // Epsilon value of 2 inches provides good balance between accuracy and simplification
+    const simplified = simplifyPath(drawnPoints, 2)
 
     // Convert to nodes and create connections
     const newNodes: any[] = []
