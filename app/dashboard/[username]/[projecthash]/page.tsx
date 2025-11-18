@@ -488,10 +488,14 @@ function CurvesEditorInner() {
     e.preventDefault()
     e.stopPropagation()
     setIsDraggingSidebar(true)
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    dragOffsetRef.current = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
+
+    // Get the sidebar element position, not the drag handle
+    if (sidebarRef.current) {
+      const sidebarRect = sidebarRef.current.getBoundingClientRect()
+      dragOffsetRef.current = {
+        x: e.clientX - sidebarRect.left,
+        y: e.clientY - sidebarRect.top
+      }
     }
     currentPositionRef.current = sidebarPosition
   }
@@ -3007,56 +3011,30 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                         {expansionServos.map((servo) => (
                           <div
                             key={`expansion-servo-${servo.port}`}
-                            onClick={() => {
-                              const newServos = [...expansionServos]
-                              newServos[servo.port].enabled = !newServos[servo.port].enabled
-                              setExpansionServos(newServos)
-                            }}
-                            className={`p-2 rounded border cursor-pointer transition-all ${
+                            onClick={() => openConfigDialog('servo', 'expansion', servo.port)}
+                            className={`p-3 rounded border cursor-pointer transition-all hover:scale-105 ${
                               servo.enabled
                                 ? 'bg-green-900/30 border-green-600 hover:bg-green-900/40'
-                                : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50'
+                                : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50 hover:border-zinc-600'
                             }`}
                           >
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-[10px] font-mono text-zinc-400">Port {servo.port}</span>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[11px] font-mono font-bold text-zinc-300">Port {servo.port}</span>
                               {servo.enabled ? (
-                                <span className="text-[9px] text-green-400">●</span>
+                                <span className="text-[9px] text-green-400 font-semibold">● ON</span>
                               ) : (
-                                <span className="text-[9px] text-zinc-500">○</span>
+                                <span className="text-[9px] text-zinc-500">○ Empty</span>
                               )}
                             </div>
-                            {servo.enabled ? (
-                              <div onClick={(e) => e.stopPropagation()} className="space-y-1">
-                                <Input
-                                  value={servo.name}
-                                  onChange={(e) => {
-                                    const newServos = [...expansionServos]
-                                    newServos[servo.port].name = e.target.value
-                                    setExpansionServos(newServos)
-                                  }}
-                                  className="h-6 text-[10px] bg-zinc-900"
-                                  placeholder="Servo name"
-                                />
-                                <Select
-                                  value={servo.type}
-                                  onValueChange={(v: 'standard' | 'continuous') => {
-                                    const newServos = [...expansionServos]
-                                    newServos[servo.port].type = v
-                                    setExpansionServos(newServos)
-                                  }}
-                                >
-                                  <SelectTrigger className="h-6 w-full text-[10px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="standard">Standard</SelectItem>
-                                    <SelectItem value="continuous">Continuous</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                            {servo.enabled && (
+                              <div className="space-y-0.5">
+                                <div className="text-[10px] text-green-200 font-medium truncate">{servo.name}</div>
+                                <div className="text-[9px] text-zinc-400">{servo.type === 'continuous' ? '↻ Continuous' : '↔ Standard'}</div>
                               </div>
-                            ) : (
-                              <div className="text-[10px] text-zinc-500 text-center py-1">
+                            )}
+                            {!servo.enabled && (
+                              <div className="text-[10px] text-zinc-500 text-center">
+                                <Plus className="h-3 w-3 mx-auto mb-0.5" />
                                 Click
                               </div>
                             )}
@@ -3078,77 +3056,38 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                       {controlI2C.map((device) => (
                         <div
                           key={`control-i2c-${device.bus}`}
-                          onClick={() => {
-                            if (device.bus !== 0) { // Bus 0 always has IMU
-                              const newDevices = [...controlI2C]
-                              newDevices[device.bus].enabled = !newDevices[device.bus].enabled
-                              setControlI2C(newDevices)
-                            }
-                          }}
-                          className={`p-2 rounded border transition-all ${
-                            device.bus === 0
-                              ? 'bg-purple-900/30 border-purple-600 cursor-default'
-                              : device.enabled
-                                ? 'bg-purple-900/30 border-purple-600 hover:bg-purple-900/40 cursor-pointer'
-                                : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50 cursor-pointer'
-                          }`}
+                          onClick={() => openConfigDialog('i2c', 'control', device.bus)}
+                          className={`p-3 rounded border cursor-pointer transition-all hover:scale-105 ${
+                            device.enabled
+                              ? 'bg-purple-900/30 border-purple-600 hover:bg-purple-900/40'
+                              : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50 hover:border-zinc-600'
+                          } ${device.bus === 0 ? 'opacity-90' : ''}`}
                         >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-mono text-zinc-400">Bus {device.bus}</span>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-mono font-bold text-zinc-300">Bus {device.bus}</span>
                             {device.enabled ? (
-                              <span className="text-[9px] text-purple-400">●</span>
+                              <span className="text-[9px] text-purple-400 font-semibold">● ON</span>
                             ) : (
-                              <span className="text-[9px] text-zinc-500">○</span>
+                              <span className="text-[9px] text-zinc-500">○ Empty</span>
                             )}
                           </div>
-                          {device.enabled ? (
-                            <div onClick={(e) => e.stopPropagation()} className="space-y-1">
-                              <Input
-                                value={device.name}
-                                onChange={(e) => {
-                                  const newDevices = [...controlI2C]
-                                  newDevices[device.bus].name = e.target.value
-                                  setControlI2C(newDevices)
-                                }}
-                                className="h-6 text-[10px] bg-zinc-900"
-                                placeholder="Device name"
-                                disabled={device.bus === 0}
-                              />
-                              <Select
-                                value={device.type}
-                                onValueChange={(v: 'imu' | 'distance' | 'color' | 'servo-controller' | 'color-range') => {
-                                  const newDevices = [...controlI2C]
-                                  newDevices[device.bus].type = v
-                                  setControlI2C(newDevices)
-                                }}
-                                disabled={device.bus === 0}
-                              >
-                                <SelectTrigger className="h-6 w-full text-[10px]">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="imu">IMU (BNO055)</SelectItem>
-                                  <SelectItem value="distance">Distance Sensor</SelectItem>
-                                  <SelectItem value="color">Color Sensor</SelectItem>
-                                  <SelectItem value="color-range">Color/Range Sensor</SelectItem>
-                                  <SelectItem value="servo-controller">Servo Controller</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <Input
-                                value={device.address}
-                                onChange={(e) => {
-                                  const newDevices = [...controlI2C]
-                                  newDevices[device.bus].address = e.target.value
-                                  setControlI2C(newDevices)
-                                }}
-                                className="h-6 text-[10px] bg-zinc-900"
-                                placeholder="I2C Address"
-                                disabled={device.bus === 0}
-                              />
+                          {device.enabled && (
+                            <div className="space-y-0.5">
+                              <div className="text-[10px] text-purple-200 font-medium truncate">{device.name}</div>
+                              <div className="text-[9px] text-zinc-400 truncate">{device.type.toUpperCase()}</div>
+                              {device.bus === 0 && <div className="text-[9px] text-blue-400">Built-in</div>}
                             </div>
-                          ) : (
-                            <div className="text-[10px] text-zinc-500 text-center py-1">
-                              {device.bus === 0 ? 'Built-in IMU' : 'Click'}
+                          )}
+                          {!device.enabled && (
+                            <div className="text-[10px] text-zinc-500 text-center">
+                              {device.bus === 0 ? (
+                                <div className="text-blue-400">Built-in IMU</div>
+                              ) : (
+                                <>
+                                  <Plus className="h-3 w-3 mx-auto mb-0.5" />
+                                  Click
+                                </>
+                              )}
                             </div>
                           )}
                         </div>
