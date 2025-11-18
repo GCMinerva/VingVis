@@ -327,6 +327,14 @@ function CurvesEditorInner() {
   const hardwareStatusAnimationFrameRef = useRef<number | null>(null)
   const currentHardwareStatusHeightRef = useRef(200)
 
+  // Right sidebar states
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false)
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(384)
+  const [isResizingRightSidebar, setIsResizingRightSidebar] = useState(false)
+  const rightSidebarRef = useRef<HTMLDivElement>(null)
+  const rightSidebarAnimationFrameRef = useRef<number | null>(null)
+  const currentRightSidebarWidthRef = useRef(384)
+
   // Hardware configuration dialog states
   type ConfigDialogType = 'motor' | 'servo' | 'i2c' | 'digital' | 'analog' | null
   const [configDialogOpen, setConfigDialogOpen] = useState(false)
@@ -621,6 +629,41 @@ function CurvesEditorInner() {
     setHardwareStatusHeight(currentHardwareStatusHeightRef.current)
   }, [])
 
+  // Right sidebar resize handlers
+  const handleRightSidebarResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsResizingRightSidebar(true)
+    currentRightSidebarWidthRef.current = rightSidebarWidth
+  }
+
+  const handleRightSidebarResizeMove = useCallback((e: MouseEvent) => {
+    if (!isResizingRightSidebar || !rightSidebarRef.current) return
+
+    if (rightSidebarAnimationFrameRef.current) {
+      cancelAnimationFrame(rightSidebarAnimationFrameRef.current)
+    }
+
+    rightSidebarAnimationFrameRef.current = requestAnimationFrame(() => {
+      if (!rightSidebarRef.current) return
+      const rect = rightSidebarRef.current.getBoundingClientRect()
+      const newWidth = Math.max(300, Math.min(600, rect.right - e.clientX))
+      currentRightSidebarWidthRef.current = newWidth
+
+      if (rightSidebarRef.current) {
+        rightSidebarRef.current.style.width = `${newWidth}px`
+      }
+    })
+  }, [isResizingRightSidebar])
+
+  const handleRightSidebarResizeEnd = useCallback(() => {
+    if (rightSidebarAnimationFrameRef.current) {
+      cancelAnimationFrame(rightSidebarAnimationFrameRef.current)
+    }
+    setIsResizingRightSidebar(false)
+    setRightSidebarWidth(currentRightSidebarWidthRef.current)
+  }, [])
+
   // Add mouse move and up listeners
   useEffect(() => {
     if (isResizingSidebar) {
@@ -683,11 +726,24 @@ function CurvesEditorInner() {
     }
   }, [isResizingHardwareStatus, handleHardwareStatusResizeMove, handleHardwareStatusResizeEnd])
 
+  // Right sidebar resize listeners
+  useEffect(() => {
+    if (isResizingRightSidebar) {
+      document.addEventListener('mousemove', handleRightSidebarResizeMove)
+      document.addEventListener('mouseup', handleRightSidebarResizeEnd)
+      return () => {
+        document.removeEventListener('mousemove', handleRightSidebarResizeMove)
+        document.removeEventListener('mouseup', handleRightSidebarResizeEnd)
+      }
+    }
+  }, [isResizingRightSidebar, handleRightSidebarResizeMove, handleRightSidebarResizeEnd])
+
   // Sync refs with state for map field and hardware status
   useEffect(() => {
     currentMapFieldHeightRef.current = mapFieldHeight
     currentHardwareStatusHeightRef.current = hardwareStatusHeight
-  }, [mapFieldHeight, hardwareStatusHeight])
+    currentRightSidebarWidthRef.current = rightSidebarWidth
+  }, [mapFieldHeight, hardwareStatusHeight, rightSidebarWidth])
 
   // Cleanup animation frames on unmount
   useEffect(() => {
@@ -698,16 +754,19 @@ function CurvesEditorInner() {
       if (hardwareStatusAnimationFrameRef.current) {
         cancelAnimationFrame(hardwareStatusAnimationFrameRef.current)
       }
+      if (rightSidebarAnimationFrameRef.current) {
+        cancelAnimationFrame(rightSidebarAnimationFrameRef.current)
+      }
     }
   }, [])
 
   // Prevent text selection during drag/resize
   useEffect(() => {
-    if (isDraggingSidebar || isResizingSidebar || isResizingMapField || isResizingHardwareStatus) {
+    if (isDraggingSidebar || isResizingSidebar || isResizingMapField || isResizingHardwareStatus || isResizingRightSidebar) {
       document.body.style.userSelect = 'none'
       if (isDraggingSidebar) {
         document.body.style.cursor = 'move'
-      } else if (isResizingSidebar) {
+      } else if (isResizingSidebar || isResizingRightSidebar) {
         document.body.style.cursor = 'col-resize'
       } else if (isResizingMapField || isResizingHardwareStatus) {
         document.body.style.cursor = 'row-resize'
@@ -720,7 +779,7 @@ function CurvesEditorInner() {
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
     }
-  }, [isDraggingSidebar, isResizingSidebar])
+  }, [isDraggingSidebar, isResizingSidebar, isResizingMapField, isResizingHardwareStatus, isResizingRightSidebar])
 
   // Hardware configuration dialog helper
   const openConfigDialog = (type: ConfigDialogType, hub: 'control' | 'expansion', port: number) => {
@@ -3802,7 +3861,45 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
         </div>
 
         {/* Right: Config + Preview */}
-        <div className="w-96 border-l border-zinc-800 flex flex-col bg-zinc-900">
+        {!rightSidebarCollapsed && (
+          <div
+            ref={rightSidebarRef}
+            className="border-l border-zinc-800 flex flex-col bg-zinc-900 relative"
+            style={{
+              width: `${rightSidebarWidth}px`,
+              minWidth: '300px',
+              maxWidth: '600px',
+              transition: isResizingRightSidebar ? 'none' : 'width 0.2s ease',
+              willChange: isResizingRightSidebar ? 'width' : 'auto'
+            }}
+          >
+            {/* Header with close button */}
+            <div className="h-8 bg-zinc-800 border-b border-zinc-700 flex items-center justify-between px-2 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-white">Preview & Config</span>
+              </div>
+              <Button
+                onClick={() => setRightSidebarCollapsed(true)}
+                title="Close sidebar"
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0"
+              >
+                <PanelLeftClose className="h-3 w-3" />
+              </Button>
+            </div>
+
+            {/* Resize handle on left edge */}
+            <div
+              className="absolute top-0 left-0 w-1 h-full cursor-col-resize bg-transparent hover:bg-blue-500/50 transition-colors group z-10"
+              onMouseDown={handleRightSidebarResizeStart}
+              title="Drag to resize"
+            >
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-12 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <GripVertical className="h-4 w-4 text-zinc-400" />
+              </div>
+            </div>
+
           {/* Servo/Motor Preview */}
           <div
             ref={hardwareStatusRef}
@@ -4566,6 +4663,22 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
             )}
           </div>
         </div>
+        )}
+
+        {/* Collapsed right sidebar button */}
+        {rightSidebarCollapsed && (
+          <div className="border-l border-zinc-800 bg-zinc-900 flex items-start justify-center p-2">
+            <Button
+              onClick={() => setRightSidebarCollapsed(false)}
+              title="Show sidebar"
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0"
+            >
+              <PanelLeft className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Hardware Configuration Dialog */}
