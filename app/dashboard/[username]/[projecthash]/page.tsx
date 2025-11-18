@@ -59,6 +59,7 @@ import {
   ChevronRight,
   ChevronLeft,
   ChevronDown,
+  ChevronUp,
   Ruler,
   Move,
   Target,
@@ -86,6 +87,7 @@ import {
   Minimize2,
   RotateCcw as RotateIcon,
   GripVertical,
+  GripHorizontal,
   Plus,
   X,
 } from "lucide-react"
@@ -309,6 +311,30 @@ function CurvesEditorInner() {
   const sidebarAnimationFrameRef = useRef<number | null>(null)
   const currentWidthRef = useRef(320)
   const currentPositionRef = useRef({ x: 0, y: 0 })
+
+  // Map field panel states
+  const [mapFieldCollapsed, setMapFieldCollapsed] = useState(false)
+  const [mapFieldHeight, setMapFieldHeight] = useState(450)
+  const [isResizingMapField, setIsResizingMapField] = useState(false)
+  const mapFieldRef = useRef<HTMLDivElement>(null)
+  const mapFieldAnimationFrameRef = useRef<number | null>(null)
+  const currentMapFieldHeightRef = useRef(450)
+
+  // Hardware status panel states
+  const [hardwareStatusCollapsed, setHardwareStatusCollapsed] = useState(false)
+  const [hardwareStatusHeight, setHardwareStatusHeight] = useState(200)
+  const [isResizingHardwareStatus, setIsResizingHardwareStatus] = useState(false)
+  const hardwareStatusRef = useRef<HTMLDivElement>(null)
+  const hardwareStatusAnimationFrameRef = useRef<number | null>(null)
+  const currentHardwareStatusHeightRef = useRef(200)
+
+  // Right sidebar states
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false)
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(384)
+  const [isResizingRightSidebar, setIsResizingRightSidebar] = useState(false)
+  const rightSidebarRef = useRef<HTMLDivElement>(null)
+  const rightSidebarAnimationFrameRef = useRef<number | null>(null)
+  const currentRightSidebarWidthRef = useRef(384)
 
   // Hardware configuration dialog states
   type ConfigDialogType = 'motor' | 'servo' | 'i2c' | 'digital' | 'analog' | 'expansion-hub' | null
@@ -534,6 +560,111 @@ function CurvesEditorInner() {
     setSidebarPosition(currentPositionRef.current)
   }, [])
 
+  // Map field resize handlers
+  const handleMapFieldResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsResizingMapField(true)
+    currentMapFieldHeightRef.current = mapFieldHeight
+  }
+
+  const handleMapFieldResizeMove = useCallback((e: MouseEvent) => {
+    if (!isResizingMapField || !mapFieldRef.current) return
+
+    if (mapFieldAnimationFrameRef.current) {
+      cancelAnimationFrame(mapFieldAnimationFrameRef.current)
+    }
+
+    mapFieldAnimationFrameRef.current = requestAnimationFrame(() => {
+      if (!mapFieldRef.current) return
+      const rect = mapFieldRef.current.getBoundingClientRect()
+      const newHeight = Math.max(300, Math.min(800, rect.bottom - e.clientY))
+      currentMapFieldHeightRef.current = newHeight
+
+      if (mapFieldRef.current) {
+        mapFieldRef.current.style.height = `${newHeight}px`
+      }
+    })
+  }, [isResizingMapField])
+
+  const handleMapFieldResizeEnd = useCallback(() => {
+    if (mapFieldAnimationFrameRef.current) {
+      cancelAnimationFrame(mapFieldAnimationFrameRef.current)
+    }
+    setIsResizingMapField(false)
+    setMapFieldHeight(currentMapFieldHeightRef.current)
+  }, [])
+
+  // Hardware status resize handlers
+  const handleHardwareStatusResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsResizingHardwareStatus(true)
+    currentHardwareStatusHeightRef.current = hardwareStatusHeight
+  }
+
+  const handleHardwareStatusResizeMove = useCallback((e: MouseEvent) => {
+    if (!isResizingHardwareStatus || !hardwareStatusRef.current) return
+
+    if (hardwareStatusAnimationFrameRef.current) {
+      cancelAnimationFrame(hardwareStatusAnimationFrameRef.current)
+    }
+
+    hardwareStatusAnimationFrameRef.current = requestAnimationFrame(() => {
+      if (!hardwareStatusRef.current) return
+      const rect = hardwareStatusRef.current.getBoundingClientRect()
+      const newHeight = Math.max(150, Math.min(500, e.clientY - rect.top))
+      currentHardwareStatusHeightRef.current = newHeight
+
+      if (hardwareStatusRef.current) {
+        hardwareStatusRef.current.style.height = `${newHeight}px`
+      }
+    })
+  }, [isResizingHardwareStatus])
+
+  const handleHardwareStatusResizeEnd = useCallback(() => {
+    if (hardwareStatusAnimationFrameRef.current) {
+      cancelAnimationFrame(hardwareStatusAnimationFrameRef.current)
+    }
+    setIsResizingHardwareStatus(false)
+    setHardwareStatusHeight(currentHardwareStatusHeightRef.current)
+  }, [])
+
+  // Right sidebar resize handlers
+  const handleRightSidebarResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsResizingRightSidebar(true)
+    currentRightSidebarWidthRef.current = rightSidebarWidth
+  }
+
+  const handleRightSidebarResizeMove = useCallback((e: MouseEvent) => {
+    if (!isResizingRightSidebar || !rightSidebarRef.current) return
+
+    if (rightSidebarAnimationFrameRef.current) {
+      cancelAnimationFrame(rightSidebarAnimationFrameRef.current)
+    }
+
+    rightSidebarAnimationFrameRef.current = requestAnimationFrame(() => {
+      if (!rightSidebarRef.current) return
+      const rect = rightSidebarRef.current.getBoundingClientRect()
+      const newWidth = Math.max(300, Math.min(600, rect.right - e.clientX))
+      currentRightSidebarWidthRef.current = newWidth
+
+      if (rightSidebarRef.current) {
+        rightSidebarRef.current.style.width = `${newWidth}px`
+      }
+    })
+  }, [isResizingRightSidebar])
+
+  const handleRightSidebarResizeEnd = useCallback(() => {
+    if (rightSidebarAnimationFrameRef.current) {
+      cancelAnimationFrame(rightSidebarAnimationFrameRef.current)
+    }
+    setIsResizingRightSidebar(false)
+    setRightSidebarWidth(currentRightSidebarWidthRef.current)
+  }, [])
+
   // Add mouse move and up listeners
   useEffect(() => {
     if (isResizingSidebar) {
@@ -572,11 +703,75 @@ function CurvesEditorInner() {
     }
   }, [])
 
+  // Map field resize listeners
+  useEffect(() => {
+    if (isResizingMapField) {
+      document.addEventListener('mousemove', handleMapFieldResizeMove)
+      document.addEventListener('mouseup', handleMapFieldResizeEnd)
+      return () => {
+        document.removeEventListener('mousemove', handleMapFieldResizeMove)
+        document.removeEventListener('mouseup', handleMapFieldResizeEnd)
+      }
+    }
+  }, [isResizingMapField, handleMapFieldResizeMove, handleMapFieldResizeEnd])
+
+  // Hardware status resize listeners
+  useEffect(() => {
+    if (isResizingHardwareStatus) {
+      document.addEventListener('mousemove', handleHardwareStatusResizeMove)
+      document.addEventListener('mouseup', handleHardwareStatusResizeEnd)
+      return () => {
+        document.removeEventListener('mousemove', handleHardwareStatusResizeMove)
+        document.removeEventListener('mouseup', handleHardwareStatusResizeEnd)
+      }
+    }
+  }, [isResizingHardwareStatus, handleHardwareStatusResizeMove, handleHardwareStatusResizeEnd])
+
+  // Right sidebar resize listeners
+  useEffect(() => {
+    if (isResizingRightSidebar) {
+      document.addEventListener('mousemove', handleRightSidebarResizeMove)
+      document.addEventListener('mouseup', handleRightSidebarResizeEnd)
+      return () => {
+        document.removeEventListener('mousemove', handleRightSidebarResizeMove)
+        document.removeEventListener('mouseup', handleRightSidebarResizeEnd)
+      }
+    }
+  }, [isResizingRightSidebar, handleRightSidebarResizeMove, handleRightSidebarResizeEnd])
+
+  // Sync refs with state for map field and hardware status
+  useEffect(() => {
+    currentMapFieldHeightRef.current = mapFieldHeight
+    currentHardwareStatusHeightRef.current = hardwareStatusHeight
+    currentRightSidebarWidthRef.current = rightSidebarWidth
+  }, [mapFieldHeight, hardwareStatusHeight, rightSidebarWidth])
+
+  // Cleanup animation frames on unmount
+  useEffect(() => {
+    return () => {
+      if (mapFieldAnimationFrameRef.current) {
+        cancelAnimationFrame(mapFieldAnimationFrameRef.current)
+      }
+      if (hardwareStatusAnimationFrameRef.current) {
+        cancelAnimationFrame(hardwareStatusAnimationFrameRef.current)
+      }
+      if (rightSidebarAnimationFrameRef.current) {
+        cancelAnimationFrame(rightSidebarAnimationFrameRef.current)
+      }
+    }
+  }, [])
+
   // Prevent text selection during drag/resize
   useEffect(() => {
-    if (isDraggingSidebar || isResizingSidebar) {
+    if (isDraggingSidebar || isResizingSidebar || isResizingMapField || isResizingHardwareStatus || isResizingRightSidebar) {
       document.body.style.userSelect = 'none'
-      document.body.style.cursor = isDraggingSidebar ? 'move' : 'col-resize'
+      if (isDraggingSidebar) {
+        document.body.style.cursor = 'move'
+      } else if (isResizingSidebar || isResizingRightSidebar) {
+        document.body.style.cursor = 'col-resize'
+      } else if (isResizingMapField || isResizingHardwareStatus) {
+        document.body.style.cursor = 'row-resize'
+      }
     } else {
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
@@ -585,7 +780,7 @@ function CurvesEditorInner() {
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
     }
-  }, [isDraggingSidebar, isResizingSidebar])
+  }, [isDraggingSidebar, isResizingSidebar, isResizingMapField, isResizingHardwareStatus, isResizingRightSidebar])
 
   // Hardware configuration dialog helper
   const openConfigDialog = (type: ConfigDialogType, hub: 'control' | 'expansion', port: number) => {
@@ -3653,40 +3848,120 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
         </div>
 
         {/* Right: Config + Preview */}
-        <div className="w-96 border-l border-zinc-800 flex flex-col bg-zinc-900">
-          {/* Servo/Motor Preview */}
-          <div className="border-b border-zinc-800 p-4 bg-zinc-900/50">
-            <h3 className="text-sm font-bold text-white mb-2">Hardware Status</h3>
-            <div className="space-y-2">
-              {servos.slice(0, 3).map((servo, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <div className="text-xs text-zinc-400 w-16 truncate">{servo.name}</div>
-                  <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 transition-all duration-300"
-                      style={{ width: `${(servoPositions[servo.name] || 0.5) * 100}%` }}
-                    />
-                  </div>
-                  <div className="text-xs font-mono text-zinc-500 w-10">
-                    {((servoPositions[servo.name] || 0.5) * 100).toFixed(0)}%
-                  </div>
-                </div>
-              ))}
-              {motors.slice(0, 4).map((motor, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <div className="text-xs text-zinc-400 w-16 truncate">{motor.name}</div>
-                  <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-green-500 transition-all duration-300"
-                      style={{ width: `${Math.abs(motorSpeeds[motor.name] || 0) * 100}%` }}
-                    />
-                  </div>
-                  <div className="text-xs font-mono text-zinc-500 w-10">
-                    {((motorSpeeds[motor.name] || 0) * 100).toFixed(0)}%
-                  </div>
-                </div>
-              ))}
+        {!rightSidebarCollapsed && (
+          <div
+            ref={rightSidebarRef}
+            className="border-l border-zinc-800 flex flex-col bg-zinc-900 relative"
+            style={{
+              width: `${rightSidebarWidth}px`,
+              minWidth: '300px',
+              maxWidth: '600px',
+              transition: isResizingRightSidebar ? 'none' : 'width 0.2s ease',
+              willChange: isResizingRightSidebar ? 'width' : 'auto'
+            }}
+          >
+            {/* Header with close button */}
+            <div className="h-8 bg-zinc-800 border-b border-zinc-700 flex items-center justify-between px-2 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-white">Preview & Config</span>
+              </div>
+              <Button
+                onClick={() => setRightSidebarCollapsed(true)}
+                title="Close sidebar"
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0"
+              >
+                <PanelLeftClose className="h-3 w-3" />
+              </Button>
             </div>
+
+            {/* Resize handle on left edge */}
+            <div
+              className="absolute top-0 left-0 w-1 h-full cursor-col-resize bg-transparent hover:bg-blue-500/50 transition-colors group z-10"
+              onMouseDown={handleRightSidebarResizeStart}
+              title="Drag to resize"
+            >
+              <div className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-12 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <GripVertical className="h-4 w-4 text-zinc-400" />
+              </div>
+            </div>
+
+          {/* Servo/Motor Preview */}
+          <div
+            ref={hardwareStatusRef}
+            className="border-b border-zinc-800 bg-zinc-900/50 relative flex flex-col overflow-hidden"
+            style={{
+              height: hardwareStatusCollapsed ? 'auto' : `${hardwareStatusHeight}px`,
+              minHeight: hardwareStatusCollapsed ? 'auto' : '150px',
+              transition: isResizingHardwareStatus ? 'none' : 'height 0.2s ease',
+              willChange: isResizingHardwareStatus ? 'height' : 'auto'
+            }}
+          >
+            {/* Header with close button */}
+            <div className="h-8 bg-zinc-800 border-b border-zinc-700 flex items-center justify-between px-2 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-white">Hardware Status</span>
+              </div>
+              <Button
+                onClick={() => setHardwareStatusCollapsed(!hardwareStatusCollapsed)}
+                title={hardwareStatusCollapsed ? "Expand Hardware Status" : "Collapse Hardware Status"}
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0"
+              >
+                {hardwareStatusCollapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
+              </Button>
+            </div>
+
+            {/* Content */}
+            {!hardwareStatusCollapsed && (
+              <>
+                <div className="p-4 overflow-auto flex-1">
+                  <div className="space-y-2">
+                    {servos.slice(0, 3).map((servo, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <div className="text-xs text-zinc-400 w-16 truncate">{servo.name}</div>
+                        <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-500 transition-all duration-300"
+                            style={{ width: `${(servoPositions[servo.name] || 0.5) * 100}%` }}
+                          />
+                        </div>
+                        <div className="text-xs font-mono text-zinc-500 w-10">
+                          {((servoPositions[servo.name] || 0.5) * 100).toFixed(0)}%
+                        </div>
+                      </div>
+                    ))}
+                    {motors.slice(0, 4).map((motor, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <div className="text-xs text-zinc-400 w-16 truncate">{motor.name}</div>
+                        <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-green-500 transition-all duration-300"
+                            style={{ width: `${Math.abs(motorSpeeds[motor.name] || 0) * 100}%` }}
+                          />
+                        </div>
+                        <div className="text-xs font-mono text-zinc-500 w-10">
+                          {((motorSpeeds[motor.name] || 0) * 100).toFixed(0)}%
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Resize handle */}
+                <div
+                  className="absolute bottom-0 left-0 right-0 h-1 cursor-row-resize bg-transparent hover:bg-blue-500/50 transition-colors group"
+                  onMouseDown={handleHardwareStatusResizeStart}
+                  title="Drag to resize"
+                >
+                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <GripHorizontal className="h-4 w-4 text-zinc-400" />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {selectedNode && selectedNode.type === 'blockNode' && (
@@ -4162,28 +4437,58 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
           )}
 
           {/* Field Preview */}
-          <div className="flex-1 p-4 overflow-auto">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-bold text-white">Field Preview</h3>
+          <div
+            ref={mapFieldRef}
+            className="relative flex flex-col overflow-hidden"
+            style={{
+              height: mapFieldCollapsed ? 'auto' : `${mapFieldHeight}px`,
+              minHeight: mapFieldCollapsed ? 'auto' : '300px',
+              transition: isResizingMapField ? 'none' : 'height 0.2s ease',
+              willChange: isResizingMapField ? 'height' : 'auto'
+            }}
+          >
+            {/* Header with controls */}
+            <div className="h-8 bg-zinc-800 border-b border-zinc-700 flex items-center justify-between px-2 flex-shrink-0">
               <div className="flex items-center gap-2">
-                <div className="text-xs text-zinc-500">
-                  {useCurves ? 'Smooth Curves' : 'Linear'}
-                </div>
+                <span className="text-xs font-semibold text-white">Field Preview</span>
+                {!mapFieldCollapsed && (
+                  <div className="text-xs text-zinc-500">
+                    {useCurves ? 'Smooth Curves' : 'Linear'}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                {!mapFieldCollapsed && (
+                  <Button
+                    onClick={toggleFullscreen}
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0"
+                    title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                  >
+                    {isFullscreen ? (
+                      <Minimize2 className="h-3 w-3" />
+                    ) : (
+                      <Maximize2 className="h-3 w-3" />
+                    )}
+                  </Button>
+                )}
                 <Button
-                  onClick={toggleFullscreen}
+                  onClick={() => setMapFieldCollapsed(!mapFieldCollapsed)}
+                  title={mapFieldCollapsed ? "Expand Field Preview" : "Collapse Field Preview"}
                   size="sm"
                   variant="ghost"
-                  className="h-7 w-7 p-0"
-                  title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                  className="h-6 w-6 p-0"
                 >
-                  {isFullscreen ? (
-                    <Minimize2 className="h-4 w-4" />
-                  ) : (
-                    <Maximize2 className="h-4 w-4" />
-                  )}
+                  {mapFieldCollapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
                 </Button>
               </div>
             </div>
+
+            {/* Content */}
+            {!mapFieldCollapsed && (
+              <>
+                <div className="p-4 overflow-auto flex-1">
 
             {/* Instructions */}
             <div className="mb-3 p-2 bg-zinc-800/50 rounded border border-zinc-700/50 text-xs text-zinc-400">
@@ -4329,8 +4634,38 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
             <div className="mt-2 text-xs text-zinc-500 text-center">
               Nodes: {nodes.filter(n => n.type === 'blockNode').length} | Connections: {edges.length}
             </div>
+                </div>
+
+                {/* Resize handle */}
+                <div
+                  className="absolute top-0 left-0 right-0 h-1 cursor-row-resize bg-transparent hover:bg-blue-500/50 transition-colors group"
+                  onMouseDown={handleMapFieldResizeStart}
+                  title="Drag to resize"
+                >
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-12 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <GripHorizontal className="h-4 w-4 text-zinc-400" />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
+        )}
+
+        {/* Collapsed right sidebar button */}
+        {rightSidebarCollapsed && (
+          <div className="border-l border-zinc-800 bg-zinc-900 flex items-start justify-center p-2">
+            <Button
+              onClick={() => setRightSidebarCollapsed(false)}
+              title="Show sidebar"
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0"
+            >
+              <PanelLeft className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Hardware Configuration Dialog */}
