@@ -119,37 +119,50 @@ type Motor = {
   name: string
   port: number
   reversed: boolean
-  hub?: 'control' | 'expansion'
+  hub: 'control' | 'expansion'
+  enabled: boolean
 }
 
 type Servo = {
   name: string
   port: number
-  hub?: 'control' | 'expansion'
-  type?: 'standard' | 'continuous'
+  hub: 'control' | 'expansion'
+  type: 'standard' | 'continuous'
+  enabled: boolean
 }
 
 type I2CDevice = {
   name: string
-  type: 'imu' | 'distance' | 'color' | 'servo-controller'
+  type: 'imu' | 'distance' | 'color' | 'servo-controller' | 'color-range'
   address: string
-  port: number
-  hub?: 'control' | 'expansion'
+  bus: number
+  hub: 'control' | 'expansion'
+  enabled: boolean
 }
 
 type DigitalDevice = {
   name: string
-  type: 'touch' | 'limit-switch' | 'magnetic'
+  type: 'touch' | 'limit-switch' | 'magnetic' | 'led'
   port: number
-  hub?: 'control' | 'expansion'
+  hub: 'control' | 'expansion'
+  enabled: boolean
 }
 
 type AnalogDevice = {
   name: string
-  type: 'potentiometer' | 'light-sensor'
+  type: 'potentiometer' | 'light-sensor' | 'ultrasonic'
   port: number
-  hub?: 'control' | 'expansion'
+  hub: 'control' | 'expansion'
+  enabled: boolean
 }
+
+// FTC Hardware Port Configuration
+// Control Hub and Expansion Hub each have:
+// - 4 Motor ports (0-3)
+// - 6 Servo ports (0-5)
+// - 4 I2C buses (0-3, bus 0 has built-in IMU)
+// - 8 Digital I/O ports (0-7)
+// - 4 Analog Input ports (0-3)
 
 const BLOCK_TYPES = {
   movement: [
@@ -327,23 +340,77 @@ function CurvesEditorInner() {
   const [isRotatingRobot, setIsRotatingRobot] = useState(false)
   const fieldContainerRef = useRef<HTMLDivElement>(null)
 
-  const [motors, setMotors] = useState<Motor[]>([
-    { name: 'motorFL', port: 0, reversed: false },
-    { name: 'motorFR', port: 1, reversed: false },
-    { name: 'motorBL', port: 2, reversed: false },
-    { name: 'motorBR', port: 3, reversed: false },
-  ])
-  const [servos, setServos] = useState<Servo[]>([
-    { name: 'servo1', port: 0, hub: 'control', type: 'standard' },
-    { name: 'servo2', port: 1, hub: 'control', type: 'standard' },
-    { name: 'servo3', port: 2, hub: 'control', type: 'standard' },
-  ])
-  const [i2cDevices, setI2cDevices] = useState<I2CDevice[]>([
-    { name: 'imu', type: 'imu', address: '0x28', port: 0 },
-  ])
-  const [digitalDevices, setDigitalDevices] = useState<DigitalDevice[]>([])
-  const [analogDevices, setAnalogDevices] = useState<AnalogDevice[]>([])
+  // Initialize all hardware ports as empty/disabled
+  // FTC Control Hub/Expansion Hub have fixed port counts
+  const initializeMotorPorts = (hub: 'control' | 'expansion'): Motor[] =>
+    Array.from({ length: 4 }, (_, i) => ({
+      name: `motor${i}`,
+      port: i,
+      reversed: false,
+      hub,
+      enabled: false
+    }))
+
+  const initializeServoPorts = (hub: 'control' | 'expansion'): Servo[] =>
+    Array.from({ length: 6 }, (_, i) => ({
+      name: `servo${i}`,
+      port: i,
+      hub,
+      type: 'standard' as const,
+      enabled: false
+    }))
+
+  const initializeI2CPorts = (hub: 'control' | 'expansion'): I2CDevice[] =>
+    Array.from({ length: 4 }, (_, i) => ({
+      name: i === 0 ? 'imu' : `i2c${i}`,
+      type: i === 0 ? ('imu' as const) : ('distance' as const),
+      address: i === 0 ? '0x28' : '0x00',
+      bus: i,
+      hub,
+      enabled: i === 0 // Built-in IMU on bus 0 is enabled by default
+    }))
+
+  const initializeDigitalPorts = (hub: 'control' | 'expansion'): DigitalDevice[] =>
+    Array.from({ length: 8 }, (_, i) => ({
+      name: `digital${i}`,
+      type: 'touch' as const,
+      port: i,
+      hub,
+      enabled: false
+    }))
+
+  const initializeAnalogPorts = (hub: 'control' | 'expansion'): AnalogDevice[] =>
+    Array.from({ length: 4 }, (_, i) => ({
+      name: `analog${i}`,
+      type: 'potentiometer' as const,
+      port: i,
+      hub,
+      enabled: false
+    }))
+
+  const [controlMotors, setControlMotors] = useState<Motor[]>(initializeMotorPorts('control'))
+  const [expansionMotors, setExpansionMotors] = useState<Motor[]>(initializeMotorPorts('expansion'))
+
+  const [controlServos, setControlServos] = useState<Servo[]>(initializeServoPorts('control'))
+  const [expansionServos, setExpansionServos] = useState<Servo[]>(initializeServoPorts('expansion'))
+
+  const [controlI2C, setControlI2C] = useState<I2CDevice[]>(initializeI2CPorts('control'))
+  const [expansionI2C, setExpansionI2C] = useState<I2CDevice[]>(initializeI2CPorts('expansion'))
+
+  const [controlDigital, setControlDigital] = useState<DigitalDevice[]>(initializeDigitalPorts('control'))
+  const [expansionDigital, setExpansionDigital] = useState<DigitalDevice[]>(initializeDigitalPorts('expansion'))
+
+  const [controlAnalog, setControlAnalog] = useState<AnalogDevice[]>(initializeAnalogPorts('control'))
+  const [expansionAnalog, setExpansionAnalog] = useState<AnalogDevice[]>(initializeAnalogPorts('expansion'))
+
   const [hasExpansionHub, setHasExpansionHub] = useState(false)
+
+  // Helper to get all enabled devices of a type
+  const motors = [...controlMotors, ...(hasExpansionHub ? expansionMotors : [])].filter(m => m.enabled)
+  const servos = [...controlServos, ...(hasExpansionHub ? expansionServos : [])].filter(s => s.enabled)
+  const i2cDevices = [...controlI2C, ...(hasExpansionHub ? expansionI2C : [])].filter(d => d.enabled)
+  const digitalDevices = [...controlDigital, ...(hasExpansionHub ? expansionDigital : [])].filter(d => d.enabled)
+  const analogDevices = [...controlAnalog, ...(hasExpansionHub ? expansionAnalog : [])].filter(d => d.enabled)
 
   // Undo/Redo
   const [actionHistory, setActionHistory] = useState<ActionBlock[][]>([])
@@ -2549,486 +2616,723 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                   </div>
                 </div>
 
-                {/* Drive Motors */}
+                {/* Motor Ports - Port-Based Configuration */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xs font-bold text-white">Drive Motors</h3>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setMotors([...motors, { name: `motor${motors.length}`, port: 0, reversed: false, hub: 'control' }])}
-                      className="h-6 text-[10px] px-2"
-                      disabled={pathMode === 'pedropathing'}
-                    >
-                      + Add
-                    </Button>
-                  </div>
-                  <div className="space-y-2">
-                    {motors.map((motor, i) => (
-                      <div key={i} className="p-2 bg-zinc-800 rounded border border-zinc-700">
-                        <div className="flex items-center justify-between mb-1">
-                          <Input
-                            value={motor.name}
-                            onChange={(e) => {
-                              const newMotors = [...motors]
-                              newMotors[i].name = e.target.value
-                              setMotors(newMotors)
-                            }}
-                            className="h-7 text-xs bg-zinc-900 flex-1"
-                            disabled={pathMode === 'pedropathing' && i < 4}
-                          />
-                          {(i >= 4 || pathMode !== 'pedropathing') && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                const newMotors = motors.filter((_, idx) => idx !== i)
-                                setMotors(newMotors)
-                              }}
-                              className="h-7 w-7 p-0 ml-1 text-red-500 hover:text-red-400"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
+                  <h3 className="text-xs font-bold text-white mb-2">Motor Ports (4 ports per hub)</h3>
+
+                  {/* Control Hub Motors */}
+                  <div className="mb-3">
+                    <div className="text-[10px] text-zinc-400 mb-1 font-semibold">Control Hub</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {controlMotors.map((motor) => (
+                        <div
+                          key={`control-motor-${motor.port}`}
+                          onClick={() => {
+                            const newMotors = [...controlMotors]
+                            newMotors[motor.port].enabled = !newMotors[motor.port].enabled
+                            setControlMotors(newMotors)
+                          }}
+                          className={`p-2 rounded border cursor-pointer transition-all ${
+                            motor.enabled
+                              ? 'bg-blue-900/30 border-blue-600 hover:bg-blue-900/40'
+                              : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50'
+                          } ${pathMode === 'pedropathing' && motor.port < 4 ? 'opacity-50' : ''}`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-mono text-zinc-400">Port {motor.port}</span>
+                            {motor.enabled ? (
+                              <span className="text-[9px] text-blue-400">●  Configured</span>
+                            ) : (
+                              <span className="text-[9px] text-zinc-500">○ Empty</span>
+                            )}
+                          </div>
+                          {motor.enabled ? (
+                            <div onClick={(e) => e.stopPropagation()} className="space-y-1">
+                              <Input
+                                value={motor.name}
+                                onChange={(e) => {
+                                  const newMotors = [...controlMotors]
+                                  newMotors[motor.port].name = e.target.value
+                                  setControlMotors(newMotors)
+                                }}
+                                className="h-6 text-[10px] bg-zinc-900"
+                                placeholder="Motor name"
+                                disabled={pathMode === 'pedropathing' && motor.port < 4}
+                              />
+                              <label className="flex items-center gap-1 cursor-pointer text-[10px] text-zinc-400">
+                                <input
+                                  type="checkbox"
+                                  checked={motor.reversed}
+                                  onChange={(e) => {
+                                    const newMotors = [...controlMotors]
+                                    newMotors[motor.port].reversed = e.target.checked
+                                    setControlMotors(newMotors)
+                                  }}
+                                  className="w-3 h-3"
+                                  disabled={pathMode === 'pedropathing' && motor.port < 4}
+                                />
+                                Reversed
+                              </label>
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-zinc-500 text-center py-1">
+                              Click to configure
+                            </div>
                           )}
                         </div>
-                        <div className="mb-2">
-                          <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
-                            <span>Port</span>
-                            <span>{motor.port}</span>
-                          </div>
-                          <Slider
-                            value={[motor.port]}
-                            onValueChange={([v]) => {
-                              const newMotors = [...motors]
-                              newMotors[i].port = v
-                              setMotors(newMotors)
-                            }}
-                            min={0}
-                            max={3}
-                            step={1}
-                            disabled={pathMode === 'pedropathing' && i < 4}
-                            className="mt-1"
-                          />
-                        </div>
-                        {hasExpansionHub && (
-                          <Select
-                            value={motor.hub || 'control'}
-                            onValueChange={(v: 'control' | 'expansion') => {
-                              const newMotors = [...motors]
-                              newMotors[i].hub = v
-                              setMotors(newMotors)
-                            }}
-                            disabled={pathMode === 'pedropathing' && i < 4}
-                          >
-                            <SelectTrigger className="h-6 w-full text-[10px] mb-1">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="control">Control Hub</SelectItem>
-                              <SelectItem value="expansion">Expansion Hub</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-                        <label className="flex items-center gap-1 cursor-pointer text-xs text-zinc-400">
-                          <input
-                            type="checkbox"
-                            checked={motor.reversed}
-                            onChange={(e) => {
-                              const newMotors = [...motors]
-                              newMotors[i].reversed = e.target.checked
-                              setMotors(newMotors)
-                            }}
-                            className="w-3 h-3"
-                            disabled={pathMode === 'pedropathing' && i < 4}
-                          />
-                          Reversed
-                        </label>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
+
+                  {/* Expansion Hub Motors */}
+                  {hasExpansionHub && (
+                    <div className="mb-3">
+                      <div className="text-[10px] text-zinc-400 mb-1 font-semibold">Expansion Hub</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {expansionMotors.map((motor) => (
+                          <div
+                            key={`expansion-motor-${motor.port}`}
+                            onClick={() => {
+                              const newMotors = [...expansionMotors]
+                              newMotors[motor.port].enabled = !newMotors[motor.port].enabled
+                              setExpansionMotors(newMotors)
+                            }}
+                            className={`p-2 rounded border cursor-pointer transition-all ${
+                              motor.enabled
+                                ? 'bg-blue-900/30 border-blue-600 hover:bg-blue-900/40'
+                                : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[10px] font-mono text-zinc-400">Port {motor.port}</span>
+                              {motor.enabled ? (
+                                <span className="text-[9px] text-blue-400">● Configured</span>
+                              ) : (
+                                <span className="text-[9px] text-zinc-500">○ Empty</span>
+                              )}
+                            </div>
+                            {motor.enabled ? (
+                              <div onClick={(e) => e.stopPropagation()} className="space-y-1">
+                                <Input
+                                  value={motor.name}
+                                  onChange={(e) => {
+                                    const newMotors = [...expansionMotors]
+                                    newMotors[motor.port].name = e.target.value
+                                    setExpansionMotors(newMotors)
+                                  }}
+                                  className="h-6 text-[10px] bg-zinc-900"
+                                  placeholder="Motor name"
+                                />
+                                <label className="flex items-center gap-1 cursor-pointer text-[10px] text-zinc-400">
+                                  <input
+                                    type="checkbox"
+                                    checked={motor.reversed}
+                                    onChange={(e) => {
+                                      const newMotors = [...expansionMotors]
+                                      newMotors[motor.port].reversed = e.target.checked
+                                      setExpansionMotors(newMotors)
+                                    }}
+                                    className="w-3 h-3"
+                                  />
+                                  Reversed
+                                </label>
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-zinc-500 text-center py-1">
+                                Click to configure
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {pathMode === 'pedropathing' && (
-                    <div className="mt-2 p-2 bg-blue-900/20 rounded border border-blue-700/50 text-xs text-blue-300">
-                      Drive motors (first 4) are locked when using PedroPathing
+                    <div className="p-2 bg-blue-900/20 rounded border border-blue-700/50 text-[10px] text-blue-300">
+                      First 4 control hub motors are required for PedroPathing
                     </div>
                   )}
                 </div>
 
-                {/* Servos */}
+                {/* Servo Ports - Port-Based Configuration */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xs font-bold text-white">Servos</h3>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setServos([...servos, { name: `servo${servos.length}`, port: 0, hub: 'control', type: 'standard' }])}
-                      className="h-6 text-[10px] px-2"
-                    >
-                      + Add
-                    </Button>
-                  </div>
-                  <div className="space-y-2">
-                    {servos.map((servo, i) => (
-                      <div key={i} className="p-2 bg-zinc-800 rounded border border-zinc-700">
-                        <div className="flex items-center justify-between mb-1">
-                          <Input
-                            value={servo.name}
-                            onChange={(e) => {
-                              const newServos = [...servos]
-                              newServos[i].name = e.target.value
-                              setServos(newServos)
-                            }}
-                            className="h-7 text-xs bg-zinc-900 flex-1"
-                          />
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              const newServos = servos.filter((_, idx) => idx !== i)
-                              setServos(newServos)
-                            }}
-                            className="h-7 w-7 p-0 ml-1 text-red-500 hover:text-red-400"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        <div className="mb-2">
-                          <div className="flex items-center justify-between text-xs text-zinc-400 mb-1">
-                            <span>Port</span>
-                            <span>{servo.port}</span>
+                  <h3 className="text-xs font-bold text-white mb-2">Servo Ports (6 ports per hub)</h3>
+
+                  {/* Control Hub Servos */}
+                  <div className="mb-3">
+                    <div className="text-[10px] text-zinc-400 mb-1 font-semibold">Control Hub</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {controlServos.map((servo) => (
+                        <div
+                          key={`control-servo-${servo.port}`}
+                          onClick={() => {
+                            const newServos = [...controlServos]
+                            newServos[servo.port].enabled = !newServos[servo.port].enabled
+                            setControlServos(newServos)
+                          }}
+                          className={`p-2 rounded border cursor-pointer transition-all ${
+                            servo.enabled
+                              ? 'bg-green-900/30 border-green-600 hover:bg-green-900/40'
+                              : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-mono text-zinc-400">Port {servo.port}</span>
+                            {servo.enabled ? (
+                              <span className="text-[9px] text-green-400">●</span>
+                            ) : (
+                              <span className="text-[9px] text-zinc-500">○</span>
+                            )}
                           </div>
-                          <Slider
-                            value={[servo.port]}
-                            onValueChange={([v]) => {
-                              const newServos = [...servos]
-                              newServos[i].port = v
-                              setServos(newServos)
-                            }}
-                            min={0}
-                            max={5}
-                            step={1}
-                            className="mt-1"
-                          />
+                          {servo.enabled ? (
+                            <div onClick={(e) => e.stopPropagation()} className="space-y-1">
+                              <Input
+                                value={servo.name}
+                                onChange={(e) => {
+                                  const newServos = [...controlServos]
+                                  newServos[servo.port].name = e.target.value
+                                  setControlServos(newServos)
+                                }}
+                                className="h-6 text-[10px] bg-zinc-900"
+                                placeholder="Servo name"
+                              />
+                              <Select
+                                value={servo.type}
+                                onValueChange={(v: 'standard' | 'continuous') => {
+                                  const newServos = [...controlServos]
+                                  newServos[servo.port].type = v
+                                  setControlServos(newServos)
+                                }}
+                              >
+                                <SelectTrigger className="h-6 w-full text-[10px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="standard">Standard</SelectItem>
+                                  <SelectItem value="continuous">Continuous</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-zinc-500 text-center py-1">
+                              Click
+                            </div>
+                          )}
                         </div>
-                        <Select
-                          value={servo.type || 'standard'}
-                          onValueChange={(v: 'standard' | 'continuous') => {
-                            const newServos = [...servos]
-                            newServos[i].type = v
-                            setServos(newServos)
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Expansion Hub Servos */}
+                  {hasExpansionHub && (
+                    <div className="mb-3">
+                      <div className="text-[10px] text-zinc-400 mb-1 font-semibold">Expansion Hub</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {expansionServos.map((servo) => (
+                          <div
+                            key={`expansion-servo-${servo.port}`}
+                            onClick={() => {
+                              const newServos = [...expansionServos]
+                              newServos[servo.port].enabled = !newServos[servo.port].enabled
+                              setExpansionServos(newServos)
+                            }}
+                            className={`p-2 rounded border cursor-pointer transition-all ${
+                              servo.enabled
+                                ? 'bg-green-900/30 border-green-600 hover:bg-green-900/40'
+                                : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[10px] font-mono text-zinc-400">Port {servo.port}</span>
+                              {servo.enabled ? (
+                                <span className="text-[9px] text-green-400">●</span>
+                              ) : (
+                                <span className="text-[9px] text-zinc-500">○</span>
+                              )}
+                            </div>
+                            {servo.enabled ? (
+                              <div onClick={(e) => e.stopPropagation()} className="space-y-1">
+                                <Input
+                                  value={servo.name}
+                                  onChange={(e) => {
+                                    const newServos = [...expansionServos]
+                                    newServos[servo.port].name = e.target.value
+                                    setExpansionServos(newServos)
+                                  }}
+                                  className="h-6 text-[10px] bg-zinc-900"
+                                  placeholder="Servo name"
+                                />
+                                <Select
+                                  value={servo.type}
+                                  onValueChange={(v: 'standard' | 'continuous') => {
+                                    const newServos = [...expansionServos]
+                                    newServos[servo.port].type = v
+                                    setExpansionServos(newServos)
+                                  }}
+                                >
+                                  <SelectTrigger className="h-6 w-full text-[10px]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="standard">Standard</SelectItem>
+                                    <SelectItem value="continuous">Continuous</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-zinc-500 text-center py-1">
+                                Click
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* I2C Buses - Port-Based Configuration */}
+                <div>
+                  <h3 className="text-xs font-bold text-white mb-2">I2C Buses (4 buses per hub)</h3>
+
+                  {/* Control Hub I2C */}
+                  <div className="mb-3">
+                    <div className="text-[10px] text-zinc-400 mb-1 font-semibold">Control Hub</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {controlI2C.map((device) => (
+                        <div
+                          key={`control-i2c-${device.bus}`}
+                          onClick={() => {
+                            if (device.bus !== 0) { // Bus 0 always has IMU
+                              const newDevices = [...controlI2C]
+                              newDevices[device.bus].enabled = !newDevices[device.bus].enabled
+                              setControlI2C(newDevices)
+                            }
                           }}
+                          className={`p-2 rounded border transition-all ${
+                            device.bus === 0
+                              ? 'bg-purple-900/30 border-purple-600 cursor-default'
+                              : device.enabled
+                                ? 'bg-purple-900/30 border-purple-600 hover:bg-purple-900/40 cursor-pointer'
+                                : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50 cursor-pointer'
+                          }`}
                         >
-                          <SelectTrigger className="h-6 w-full text-[10px] mb-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="standard">Standard</SelectItem>
-                            <SelectItem value="continuous">Continuous</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        {hasExpansionHub && (
-                          <Select
-                            value={servo.hub || 'control'}
-                            onValueChange={(v: 'control' | 'expansion') => {
-                              const newServos = [...servos]
-                              newServos[i].hub = v
-                              setServos(newServos)
-                            }}
-                          >
-                            <SelectTrigger className="h-6 w-full text-[10px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="control">Control Hub</SelectItem>
-                              <SelectItem value="expansion">Expansion Hub</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </div>
-                    ))}
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-mono text-zinc-400">Bus {device.bus}</span>
+                            {device.enabled ? (
+                              <span className="text-[9px] text-purple-400">●</span>
+                            ) : (
+                              <span className="text-[9px] text-zinc-500">○</span>
+                            )}
+                          </div>
+                          {device.enabled ? (
+                            <div onClick={(e) => e.stopPropagation()} className="space-y-1">
+                              <Input
+                                value={device.name}
+                                onChange={(e) => {
+                                  const newDevices = [...controlI2C]
+                                  newDevices[device.bus].name = e.target.value
+                                  setControlI2C(newDevices)
+                                }}
+                                className="h-6 text-[10px] bg-zinc-900"
+                                placeholder="Device name"
+                                disabled={device.bus === 0}
+                              />
+                              <Select
+                                value={device.type}
+                                onValueChange={(v: 'imu' | 'distance' | 'color' | 'servo-controller' | 'color-range') => {
+                                  const newDevices = [...controlI2C]
+                                  newDevices[device.bus].type = v
+                                  setControlI2C(newDevices)
+                                }}
+                                disabled={device.bus === 0}
+                              >
+                                <SelectTrigger className="h-6 w-full text-[10px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="imu">IMU (BNO055)</SelectItem>
+                                  <SelectItem value="distance">Distance Sensor</SelectItem>
+                                  <SelectItem value="color">Color Sensor</SelectItem>
+                                  <SelectItem value="color-range">Color/Range Sensor</SelectItem>
+                                  <SelectItem value="servo-controller">Servo Controller</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Input
+                                value={device.address}
+                                onChange={(e) => {
+                                  const newDevices = [...controlI2C]
+                                  newDevices[device.bus].address = e.target.value
+                                  setControlI2C(newDevices)
+                                }}
+                                className="h-6 text-[10px] bg-zinc-900"
+                                placeholder="I2C Address"
+                                disabled={device.bus === 0}
+                              />
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-zinc-500 text-center py-1">
+                              {device.bus === 0 ? 'Built-in IMU' : 'Click'}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
+
+                  {/* Expansion Hub I2C */}
+                  {hasExpansionHub && (
+                    <div className="mb-3">
+                      <div className="text-[10px] text-zinc-400 mb-1 font-semibold">Expansion Hub</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {expansionI2C.map((device) => (
+                          <div
+                            key={`expansion-i2c-${device.bus}`}
+                            onClick={() => {
+                              if (device.bus !== 0) {
+                                const newDevices = [...expansionI2C]
+                                newDevices[device.bus].enabled = !newDevices[device.bus].enabled
+                                setExpansionI2C(newDevices)
+                              }
+                            }}
+                            className={`p-2 rounded border transition-all ${
+                              device.bus === 0
+                                ? 'bg-purple-900/30 border-purple-600 cursor-default'
+                                : device.enabled
+                                  ? 'bg-purple-900/30 border-purple-600 hover:bg-purple-900/40 cursor-pointer'
+                                  : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50 cursor-pointer'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[10px] font-mono text-zinc-400">Bus {device.bus}</span>
+                              {device.enabled ? (
+                                <span className="text-[9px] text-purple-400">●</span>
+                              ) : (
+                                <span className="text-[9px] text-zinc-500">○</span>
+                              )}
+                            </div>
+                            {device.enabled ? (
+                              <div onClick={(e) => e.stopPropagation()} className="space-y-1">
+                                <Input
+                                  value={device.name}
+                                  onChange={(e) => {
+                                    const newDevices = [...expansionI2C]
+                                    newDevices[device.bus].name = e.target.value
+                                    setExpansionI2C(newDevices)
+                                  }}
+                                  className="h-6 text-[10px] bg-zinc-900"
+                                  placeholder="Device name"
+                                  disabled={device.bus === 0}
+                                />
+                                <Select
+                                  value={device.type}
+                                  onValueChange={(v: 'imu' | 'distance' | 'color' | 'servo-controller' | 'color-range') => {
+                                    const newDevices = [...expansionI2C]
+                                    newDevices[device.bus].type = v
+                                    setExpansionI2C(newDevices)
+                                  }}
+                                  disabled={device.bus === 0}
+                                >
+                                  <SelectTrigger className="h-6 w-full text-[10px]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="imu">IMU (BNO055)</SelectItem>
+                                    <SelectItem value="distance">Distance Sensor</SelectItem>
+                                    <SelectItem value="color">Color Sensor</SelectItem>
+                                    <SelectItem value="color-range">Color/Range Sensor</SelectItem>
+                                    <SelectItem value="servo-controller">Servo Controller</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Input
+                                  value={device.address}
+                                  onChange={(e) => {
+                                    const newDevices = [...expansionI2C]
+                                    newDevices[device.bus].address = e.target.value
+                                    setExpansionI2C(newDevices)
+                                  }}
+                                  className="h-6 text-[10px] bg-zinc-900"
+                                  placeholder="I2C Address"
+                                  disabled={device.bus === 0}
+                                />
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-zinc-500 text-center py-1">
+                                {device.bus === 0 ? 'Built-in IMU' : 'Click'}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* I2C Devices */}
+                {/* Digital Ports - Port-Based Configuration */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xs font-bold text-white">I2C Devices</h3>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setI2cDevices([...i2cDevices, { name: 'sensor', type: 'distance', address: '0x00', port: 0, hub: 'control' }])}
-                      className="h-6 text-[10px] px-2"
-                    >
-                      + Add
-                    </Button>
-                  </div>
-                  <div className="space-y-2">
-                    {i2cDevices.map((device, i) => (
-                      <div key={i} className="p-2 bg-zinc-800 rounded border border-zinc-700">
-                        <div className="flex items-center justify-between mb-1">
-                          <Input
-                            value={device.name}
-                            onChange={(e) => {
-                              const newDevices = [...i2cDevices]
-                              newDevices[i].name = e.target.value
-                              setI2cDevices(newDevices)
-                            }}
-                            className="h-7 text-xs bg-zinc-900 flex-1"
-                          />
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              const newDevices = i2cDevices.filter((_, idx) => idx !== i)
-                              setI2cDevices(newDevices)
-                            }}
-                            className="h-7 w-7 p-0 ml-1 text-red-500 hover:text-red-400"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        <Select
-                          value={device.type}
-                          onValueChange={(v: 'imu' | 'distance' | 'color' | 'servo-controller') => {
-                            const newDevices = [...i2cDevices]
-                            newDevices[i].type = v
-                            setI2cDevices(newDevices)
+                  <h3 className="text-xs font-bold text-white mb-2">Digital I/O Ports (8 ports per hub)</h3>
+
+                  {/* Control Hub Digital */}
+                  <div className="mb-3">
+                    <div className="text-[10px] text-zinc-400 mb-1 font-semibold">Control Hub</div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {controlDigital.map((device) => (
+                        <div
+                          key={`control-digital-${device.port}`}
+                          onClick={() => {
+                            const newDevices = [...controlDigital]
+                            newDevices[device.port].enabled = !newDevices[device.port].enabled
+                            setControlDigital(newDevices)
                           }}
+                          className={`p-2 rounded border cursor-pointer transition-all ${
+                            device.enabled
+                              ? 'bg-orange-900/30 border-orange-600 hover:bg-orange-900/40'
+                              : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50'
+                          }`}
                         >
-                          <SelectTrigger className="h-6 w-full text-[10px] mb-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="imu">IMU (BNO055)</SelectItem>
-                            <SelectItem value="distance">Distance Sensor</SelectItem>
-                            <SelectItem value="color">Color Sensor</SelectItem>
-                            <SelectItem value="servo-controller">Servo Controller</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <div className="flex gap-1 mb-1">
-                          <Input
-                            value={device.address}
-                            onChange={(e) => {
-                              const newDevices = [...i2cDevices]
-                              newDevices[i].address = e.target.value
-                              setI2cDevices(newDevices)
-                            }}
-                            placeholder="Address"
-                            className="h-6 text-[10px] bg-zinc-900"
-                          />
-                          <Input
-                            type="number"
-                            value={device.port}
-                            onChange={(e) => {
-                              const newDevices = [...i2cDevices]
-                              newDevices[i].port = parseInt(e.target.value)
-                              setI2cDevices(newDevices)
-                            }}
-                            placeholder="Port"
-                            className="h-6 text-[10px] bg-zinc-900 w-16"
-                          />
+                          <div className="text-center">
+                            <div className="text-[10px] font-mono text-zinc-400 mb-1">{device.port}</div>
+                            {device.enabled ? (
+                              <div onClick={(e) => e.stopPropagation()} className="space-y-1">
+                                <Input
+                                  value={device.name}
+                                  onChange={(e) => {
+                                    const newDevices = [...controlDigital]
+                                    newDevices[device.port].name = e.target.value
+                                    setControlDigital(newDevices)
+                                  }}
+                                  className="h-6 text-[10px] bg-zinc-900"
+                                  placeholder="Name"
+                                />
+                                <Select
+                                  value={device.type}
+                                  onValueChange={(v: 'touch' | 'limit-switch' | 'magnetic' | 'led') => {
+                                    const newDevices = [...controlDigital]
+                                    newDevices[device.port].type = v
+                                    setControlDigital(newDevices)
+                                  }}
+                                >
+                                  <SelectTrigger className="h-6 w-full text-[10px]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="touch">Touch</SelectItem>
+                                    <SelectItem value="limit-switch">Limit</SelectItem>
+                                    <SelectItem value="magnetic">Magnetic</SelectItem>
+                                    <SelectItem value="led">LED</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            ) : (
+                              <span className="text-[9px] text-zinc-500">○</span>
+                            )}
+                          </div>
                         </div>
-                        {hasExpansionHub && (
-                          <Select
-                            value={device.hub || 'control'}
-                            onValueChange={(v: 'control' | 'expansion') => {
-                              const newDevices = [...i2cDevices]
-                              newDevices[i].hub = v
-                              setI2cDevices(newDevices)
-                            }}
-                          >
-                            <SelectTrigger className="h-6 w-full text-[10px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="control">Control Hub</SelectItem>
-                              <SelectItem value="expansion">Expansion Hub</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
+
+                  {/* Expansion Hub Digital */}
+                  {hasExpansionHub && (
+                    <div className="mb-3">
+                      <div className="text-[10px] text-zinc-400 mb-1 font-semibold">Expansion Hub</div>
+                      <div className="grid grid-cols-4 gap-2">
+                        {expansionDigital.map((device) => (
+                          <div
+                            key={`expansion-digital-${device.port}`}
+                            onClick={() => {
+                              const newDevices = [...expansionDigital]
+                              newDevices[device.port].enabled = !newDevices[device.port].enabled
+                              setExpansionDigital(newDevices)
+                            }}
+                            className={`p-2 rounded border cursor-pointer transition-all ${
+                              device.enabled
+                                ? 'bg-orange-900/30 border-orange-600 hover:bg-orange-900/40'
+                                : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50'
+                            }`}
+                          >
+                            <div className="text-center">
+                              <div className="text-[10px] font-mono text-zinc-400 mb-1">{device.port}</div>
+                              {device.enabled ? (
+                                <div onClick={(e) => e.stopPropagation()} className="space-y-1">
+                                  <Input
+                                    value={device.name}
+                                    onChange={(e) => {
+                                      const newDevices = [...expansionDigital]
+                                      newDevices[device.port].name = e.target.value
+                                      setExpansionDigital(newDevices)
+                                    }}
+                                    className="h-6 text-[10px] bg-zinc-900"
+                                    placeholder="Name"
+                                  />
+                                  <Select
+                                    value={device.type}
+                                    onValueChange={(v: 'touch' | 'limit-switch' | 'magnetic' | 'led') => {
+                                      const newDevices = [...expansionDigital]
+                                      newDevices[device.port].type = v
+                                      setExpansionDigital(newDevices)
+                                    }}
+                                  >
+                                    <SelectTrigger className="h-6 w-full text-[10px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="touch">Touch</SelectItem>
+                                      <SelectItem value="limit-switch">Limit</SelectItem>
+                                      <SelectItem value="magnetic">Magnetic</SelectItem>
+                                      <SelectItem value="led">LED</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              ) : (
+                                <span className="text-[9px] text-zinc-500">○</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Digital Devices */}
+                {/* Analog Ports - Port-Based Configuration */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xs font-bold text-white">Digital Sensors</h3>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setDigitalDevices([...digitalDevices, { name: 'touchSensor', type: 'touch', port: 0, hub: 'control' }])}
-                      className="h-6 text-[10px] px-2"
-                    >
-                      + Add
-                    </Button>
-                  </div>
-                  <div className="space-y-2">
-                    {digitalDevices.map((device, i) => (
-                      <div key={i} className="p-2 bg-zinc-800 rounded border border-zinc-700">
-                        <div className="flex items-center justify-between mb-1">
-                          <Input
-                            value={device.name}
-                            onChange={(e) => {
-                              const newDevices = [...digitalDevices]
-                              newDevices[i].name = e.target.value
-                              setDigitalDevices(newDevices)
-                            }}
-                            className="h-7 text-xs bg-zinc-900 flex-1"
-                          />
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              const newDevices = digitalDevices.filter((_, idx) => idx !== i)
-                              setDigitalDevices(newDevices)
-                            }}
-                            className="h-7 w-7 p-0 ml-1 text-red-500 hover:text-red-400"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        <div className="flex gap-1 mb-1">
-                          <Select
-                            value={device.type}
-                            onValueChange={(v: 'touch' | 'limit-switch' | 'magnetic') => {
-                              const newDevices = [...digitalDevices]
-                              newDevices[i].type = v
-                              setDigitalDevices(newDevices)
-                            }}
-                          >
-                            <SelectTrigger className="h-6 flex-1 text-[10px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="touch">Touch Sensor</SelectItem>
-                              <SelectItem value="limit-switch">Limit Switch</SelectItem>
-                              <SelectItem value="magnetic">Magnetic Sensor</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Input
-                            type="number"
-                            value={device.port}
-                            onChange={(e) => {
-                              const newDevices = [...digitalDevices]
-                              newDevices[i].port = parseInt(e.target.value)
-                              setDigitalDevices(newDevices)
-                            }}
-                            placeholder="Port"
-                            className="h-6 text-[10px] bg-zinc-900 w-16"
-                          />
-                        </div>
-                        {hasExpansionHub && (
-                          <Select
-                            value={device.hub || 'control'}
-                            onValueChange={(v: 'control' | 'expansion') => {
-                              const newDevices = [...digitalDevices]
-                              newDevices[i].hub = v
-                              setDigitalDevices(newDevices)
-                            }}
-                          >
-                            <SelectTrigger className="h-6 w-full text-[10px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="control">Control Hub</SelectItem>
-                              <SelectItem value="expansion">Expansion Hub</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                  <h3 className="text-xs font-bold text-white mb-2">Analog Input Ports (4 ports per hub)</h3>
 
-                {/* Analog Devices */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xs font-bold text-white">Analog Sensors</h3>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setAnalogDevices([...analogDevices, { name: 'potentiometer', type: 'potentiometer', port: 0, hub: 'control' }])}
-                      className="h-6 text-[10px] px-2"
-                    >
-                      + Add
-                    </Button>
+                  {/* Control Hub Analog */}
+                  <div className="mb-3">
+                    <div className="text-[10px] text-zinc-400 mb-1 font-semibold">Control Hub</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {controlAnalog.map((device) => (
+                        <div
+                          key={`control-analog-${device.port}`}
+                          onClick={() => {
+                            const newDevices = [...controlAnalog]
+                            newDevices[device.port].enabled = !newDevices[device.port].enabled
+                            setControlAnalog(newDevices)
+                          }}
+                          className={`p-2 rounded border cursor-pointer transition-all ${
+                            device.enabled
+                              ? 'bg-yellow-900/30 border-yellow-600 hover:bg-yellow-900/40'
+                              : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-mono text-zinc-400">Port {device.port}</span>
+                            {device.enabled ? (
+                              <span className="text-[9px] text-yellow-400">●</span>
+                            ) : (
+                              <span className="text-[9px] text-zinc-500">○</span>
+                            )}
+                          </div>
+                          {device.enabled ? (
+                            <div onClick={(e) => e.stopPropagation()} className="space-y-1">
+                              <Input
+                                value={device.name}
+                                onChange={(e) => {
+                                  const newDevices = [...controlAnalog]
+                                  newDevices[device.port].name = e.target.value
+                                  setControlAnalog(newDevices)
+                                }}
+                                className="h-6 text-[10px] bg-zinc-900"
+                                placeholder="Device name"
+                              />
+                              <Select
+                                value={device.type}
+                                onValueChange={(v: 'potentiometer' | 'light-sensor' | 'ultrasonic') => {
+                                  const newDevices = [...controlAnalog]
+                                  newDevices[device.port].type = v
+                                  setControlAnalog(newDevices)
+                                }}
+                              >
+                                <SelectTrigger className="h-6 w-full text-[10px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="potentiometer">Potentiometer</SelectItem>
+                                  <SelectItem value="light-sensor">Light Sensor</SelectItem>
+                                  <SelectItem value="ultrasonic">Ultrasonic</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-zinc-500 text-center py-1">
+                              Click
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    {analogDevices.map((device, i) => (
-                      <div key={i} className="p-2 bg-zinc-800 rounded border border-zinc-700">
-                        <div className="flex items-center justify-between mb-1">
-                          <Input
-                            value={device.name}
-                            onChange={(e) => {
-                              const newDevices = [...analogDevices]
-                              newDevices[i].name = e.target.value
-                              setAnalogDevices(newDevices)
-                            }}
-                            className="h-7 text-xs bg-zinc-900 flex-1"
-                          />
-                          <Button
-                            size="sm"
-                            variant="ghost"
+
+                  {/* Expansion Hub Analog */}
+                  {hasExpansionHub && (
+                    <div className="mb-3">
+                      <div className="text-[10px] text-zinc-400 mb-1 font-semibold">Expansion Hub</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {expansionAnalog.map((device) => (
+                          <div
+                            key={`expansion-analog-${device.port}`}
                             onClick={() => {
-                              const newDevices = analogDevices.filter((_, idx) => idx !== i)
-                              setAnalogDevices(newDevices)
+                              const newDevices = [...expansionAnalog]
+                              newDevices[device.port].enabled = !newDevices[device.port].enabled
+                              setExpansionAnalog(newDevices)
                             }}
-                            className="h-7 w-7 p-0 ml-1 text-red-500 hover:text-red-400"
+                            className={`p-2 rounded border cursor-pointer transition-all ${
+                              device.enabled
+                                ? 'bg-yellow-900/30 border-yellow-600 hover:bg-yellow-900/40'
+                                : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50'
+                            }`}
                           >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        <div className="flex gap-1 mb-1">
-                          <Select
-                            value={device.type}
-                            onValueChange={(v: 'potentiometer' | 'light-sensor') => {
-                              const newDevices = [...analogDevices]
-                              newDevices[i].type = v
-                              setAnalogDevices(newDevices)
-                            }}
-                          >
-                            <SelectTrigger className="h-6 flex-1 text-[10px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="potentiometer">Potentiometer</SelectItem>
-                              <SelectItem value="light-sensor">Light Sensor</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Input
-                            type="number"
-                            value={device.port}
-                            onChange={(e) => {
-                              const newDevices = [...analogDevices]
-                              newDevices[i].port = parseInt(e.target.value)
-                              setAnalogDevices(newDevices)
-                            }}
-                            placeholder="Port"
-                            className="h-6 text-[10px] bg-zinc-900 w-16"
-                          />
-                        </div>
-                        {hasExpansionHub && (
-                          <Select
-                            value={device.hub || 'control'}
-                            onValueChange={(v: 'control' | 'expansion') => {
-                              const newDevices = [...analogDevices]
-                              newDevices[i].hub = v
-                              setAnalogDevices(newDevices)
-                            }}
-                          >
-                            <SelectTrigger className="h-6 w-full text-[10px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="control">Control Hub</SelectItem>
-                              <SelectItem value="expansion">Expansion Hub</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[10px] font-mono text-zinc-400">Port {device.port}</span>
+                              {device.enabled ? (
+                                <span className="text-[9px] text-yellow-400">●</span>
+                              ) : (
+                                <span className="text-[9px] text-zinc-500">○</span>
+                              )}
+                            </div>
+                            {device.enabled ? (
+                              <div onClick={(e) => e.stopPropagation()} className="space-y-1">
+                                <Input
+                                  value={device.name}
+                                  onChange={(e) => {
+                                    const newDevices = [...expansionAnalog]
+                                    newDevices[device.port].name = e.target.value
+                                    setExpansionAnalog(newDevices)
+                                  }}
+                                  className="h-6 text-[10px] bg-zinc-900"
+                                  placeholder="Device name"
+                                />
+                                <Select
+                                  value={device.type}
+                                  onValueChange={(v: 'potentiometer' | 'light-sensor' | 'ultrasonic') => {
+                                    const newDevices = [...expansionAnalog]
+                                    newDevices[device.port].type = v
+                                    setExpansionAnalog(newDevices)
+                                  }}
+                                >
+                                  <SelectTrigger className="h-6 w-full text-[10px]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="potentiometer">Potentiometer</SelectItem>
+                                    <SelectItem value="light-sensor">Light Sensor</SelectItem>
+                                    <SelectItem value="ultrasonic">Ultrasonic</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-zinc-500 text-center py-1">
+                                Click
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
                 </div>
                 </div>
