@@ -297,6 +297,20 @@ function CurvesEditorInner() {
   const [blockSearchQuery, setBlockSearchQuery] = useState('')
   const [useCurves, setUseCurves] = useState(true)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [showExportDialog, setShowExportDialog] = useState(false)
+  const [selectedExportMode, setSelectedExportMode] = useState<'roadrunner' | 'pedropathing' | 'simple' | 'encoder'>('simple')
+  const [saveExportPreference, setSaveExportPreference] = useState(false)
+
+  // Load saved export preference on mount
+  useEffect(() => {
+    const savedMode = localStorage.getItem('vingvis-export-mode')
+    const savedPreference = localStorage.getItem('vingvis-save-export-preference')
+
+    if (savedMode && savedPreference === 'true') {
+      setSelectedExportMode(savedMode as 'roadrunner' | 'pedropathing' | 'simple' | 'encoder')
+      setSaveExportPreference(true)
+    }
+  }, [])
 
   // Sidebar drag and resize states
   const [sidebarWidth, setSidebarWidth] = useState(320)
@@ -2510,11 +2524,11 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}RR extends
     let code = `package org.firstinspires.ftc.teamcode;
 
 import com.pedropathing.follower.Follower;
-import com.pedropathing.pathgen.BezierLine;
-import com.pedropathing.pathgen.BezierCurve;
-import com.pedropathing.pathgen.Path;
-import com.pedropathing.pathgen.PathChain;
-import com.pedropathing.pathgen.Point;
+import com.pedropathing.geometry.BezierLine;
+import com.pedropathing.geometry.Pose;
+import com.pedropathing.paths.Path;
+import com.pedropathing.paths.PathChain;
+import com.pedropathing.util.Timer;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -2523,7 +2537,9 @@ import com.qualcomm.robotcore.hardware.Servo;
 @Autonomous(name = "${project?.name || 'Auto'} (PedroPathing)", group = "Auto")
 public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro extends OpMode {
     private Follower follower;
-    private PathChain path;
+    private PathChain pathChain;
+    private int pathState = 0;
+    private Timer timer = new Timer();
 `
 
     // Add hardware declarations based on blocks
@@ -2560,10 +2576,11 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
       code += `\n`
     }
 
-    // Build path
+    // Build path waypoints
     let currentX = robotX
     let currentY = robotY
-    let pathPoints: string[] = [`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`]
+    let currentHeading = robotHeading
+    let pathPoses: string[] = []
 
     orderedNodes.forEach(node => {
       const data = node.data
@@ -2572,74 +2589,109 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
       if (data.type === 'moveToPosition' || data.type === 'splineTo') {
         currentX = data.targetX || currentX
         currentY = data.targetY || currentY
-        pathPoints.push(`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`)
+        pathPoses.push(`new Pose(${currentX}, ${currentY}, Math.toRadians(${currentHeading}))`)
       } else if (data.type === 'forward') {
-        // Approximate forward movement (assuming 0 degree heading for simplicity)
-        currentY += (data.distance || 24)
-        pathPoints.push(`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`)
+        const distance = data.distance || 24
+        currentY += distance
+        pathPoses.push(`new Pose(${currentX}, ${currentY}, Math.toRadians(${currentHeading}))`)
       } else if (data.type === 'backward') {
-        currentY -= (data.distance || 24)
-        pathPoints.push(`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`)
+        const distance = data.distance || 24
+        currentY -= distance
+        pathPoses.push(`new Pose(${currentX}, ${currentY}, Math.toRadians(${currentHeading}))`)
       } else if (data.type === 'strafeLeft') {
-        currentX -= (data.distance || 24)
-        pathPoints.push(`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`)
+        const distance = data.distance || 24
+        currentX -= distance
+        pathPoses.push(`new Pose(${currentX}, ${currentY}, Math.toRadians(${currentHeading}))`)
       } else if (data.type === 'strafeRight') {
-        currentX += (data.distance || 24)
-        pathPoints.push(`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`)
+        const distance = data.distance || 24
+        currentX += distance
+        pathPoses.push(`new Pose(${currentX}, ${currentY}, Math.toRadians(${currentHeading}))`)
+      } else if (data.type === 'turnLeft') {
+        const degrees = data.degrees || 90
+        currentHeading -= degrees
+        pathPoses.push(`new Pose(${currentX}, ${currentY}, Math.toRadians(${currentHeading}))`)
+      } else if (data.type === 'turnRight') {
+        const degrees = data.degrees || 90
+        currentHeading += degrees
+        pathPoses.push(`new Pose(${currentX}, ${currentY}, Math.toRadians(${currentHeading}))`)
       }
     })
 
-    // Only build path if there are points
-    if (pathPoints.length > 1) {
-      code += `        // Build path\n`
-      code += `        path = follower.pathBuilder()\n`
-      for (let i = 0; i < pathPoints.length - 1; i++) {
-        code += `            .addPath(new BezierLine(${pathPoints[i]}, ${pathPoints[i + 1]}))\n`
+    code += `        // Set start pose\n`
+    code += `        Pose startPose = new Pose(${robotX}, ${robotY}, Math.toRadians(${robotHeading}));\n`
+    code += `        follower.setStartingPose(startPose);\n\n`
+
+    // Build path if there are waypoints
+    if (pathPoses.length > 0) {
+      code += `        // Build autonomous path\n`
+      code += `        pathChain = follower.pathBuilder()\n`
+
+      const startPoseStr = `new Pose(${robotX}, ${robotY}, Math.toRadians(${robotHeading}))`
+      for (let i = 0; i < pathPoses.length; i++) {
+        const fromPose = i === 0 ? startPoseStr : pathPoses[i - 1]
+        code += `            .addPath(new BezierLine(${fromPose}, ${pathPoses[i]}))\n`
       }
-      code += `            .build();\n\n`
-      code += `        follower.followPath(path);\n`
+      code += `            .setLinearHeadingInterpolation(startPose.getHeading(), Math.toRadians(${currentHeading}))\n`
+      code += `            .build();\n`
     }
 
     code += `    }
 
     @Override
     public void start() {
-        super.start();
-        follower.startTeleopDrive();
+        super.start();`
+
+    if (pathPoses.length > 0) {
+      code += `\n        follower.followPath(pathChain);`
+    }
+
+    code += `\n        timer.resetTimer();
     }
 
     @Override
     public void loop() {
         follower.update();
+
+        // State machine for autonomous
+        switch (pathState) {
+            case 0: // Following path
+                if (!follower.isBusy()) {
+                    pathState = 1;
+                }
+                break;
+            case 1: // Path complete, execute mechanisms
 `
 
-    // Add mechanism control and other non-path blocks in the loop
-    orderedNodes.forEach(node => {
-      const data = node.data
+    // Add mechanism control in state 1
+    if (hasServoBlocks || hasMotorBlocks) {
+      orderedNodes.forEach(node => {
+        const data = node.data
 
-      if (data.type === 'setServo' && data.servoName) {
-        code += `\n        // Set servo position\n`
-        code += `        ${data.servoName}.setPosition(${data.position || 0.5});\n`
-      } else if (data.type === 'runMotor' && data.motorName) {
-        code += `\n        // Run motor\n`
-        code += `        ${data.motorName}.setPower(${data.power || 0.5});\n`
-      } else if (data.type === 'stopMotor' && data.motorName) {
-        code += `\n        // Stop motor\n`
-        code += `        ${data.motorName}.setPower(0);\n`
-      } else if (data.type === 'setMotorPower' && data.motorName) {
-        code += `\n        // Set motor power\n`
-        code += `        ${data.motorName}.setPower(${data.power || 0.5});\n`
-      } else if (data.type === 'custom' && data.customCode) {
-        code += `\n        // Custom code\n`
-        code += `        ${data.customCode}\n`
-      }
-    })
+        if (data.type === 'setServo' && data.servoName) {
+          code += `                ${data.servoName}.setPosition(${data.position || 0.5});\n`
+        } else if (data.type === 'runMotor' && data.motorName) {
+          code += `                ${data.motorName}.setPower(${data.power || 0.5});\n`
+        } else if (data.type === 'stopMotor' && data.motorName) {
+          code += `                ${data.motorName}.setPower(0);\n`
+        } else if (data.type === 'setMotorPower' && data.motorName) {
+          code += `                ${data.motorName}.setPower(${data.power || 0.5});\n`
+        } else if (data.type === 'custom' && data.customCode) {
+          code += `                ${data.customCode}\n`
+        }
+      })
+    }
 
-    code += `
+    code += `                pathState = 2;
+                break;
+            case 2: // Autonomous complete
+                break;
+        }
+
         // Telemetry
+        telemetry.addData("Path State", pathState);
         telemetry.addData("X", follower.getPose().getX());
         telemetry.addData("Y", follower.getPose().getY());
-        telemetry.addData("Heading", Math.toDegrees(follower.getPose().getHeading()));
+        telemetry.addData("Heading (deg)", Math.toDegrees(follower.getPose().getHeading()));
         telemetry.update();
     }
 }
@@ -2656,14 +2708,599 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
     URL.revokeObjectURL(url)
   }
 
+  const exportSimpleCode = () => {
+    // Build ordered list of nodes
+    const orderedNodes: Node<BlockNodeData>[] = []
+    const visited = new Set<string>()
+
+    const traverseNodes = (nodeId: string) => {
+      if (visited.has(nodeId)) return
+      visited.add(nodeId)
+
+      const node = nodes.find(n => n.id === nodeId)
+      if (node && node.type === 'blockNode') {
+        orderedNodes.push(node)
+      }
+
+      const outgoingEdges = edges.filter(e => e.source === nodeId)
+      outgoingEdges.forEach(edge => traverseNodes(edge.target))
+    }
+
+    traverseNodes('start')
+
+    // Get all enabled motors from drivetrain based on template type
+    const enabledDriveMotors = [
+      { varName: 'frontLeft', port: '0', enabled: true, reversed: false },
+      { varName: 'frontRight', port: '1', enabled: true, reversed: false },
+      { varName: 'backLeft', port: '2', enabled: true, reversed: false },
+      { varName: 'backRight', port: '3', enabled: true, reversed: false },
+    ]
+
+    // Get all mechanism motors and servos
+    const enabledControlMotors = controlMotors.filter(m => m.enabled)
+    const enabledExpansionMotors = expansionMotors.filter(m => m.enabled)
+    const allMechanismMotors = [...enabledControlMotors, ...enabledExpansionMotors]
+
+    const enabledControlServos = controlServos.filter(s => s.enabled)
+    const enabledExpansionServos = expansionServos.filter(s => s.enabled)
+    const allServos = [...enabledControlServos, ...enabledExpansionServos]
+
+    // Start building code
+    let code = `package org.firstinspires.ftc.teamcode;
+
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.hardware.IMU;
+import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+
+@Autonomous(name = "${project?.name || 'Auto'} (Simple)", group = "Auto")
+public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Simple extends LinearOpMode {
+`
+
+    // Declare drivetrain motors
+    if (enabledDriveMotors.length > 0) {
+      code += `    // Drivetrain motors\n`
+      enabledDriveMotors.forEach(motor => {
+        code += `    private DcMotor ${motor.varName};\n`
+      })
+      code += `\n`
+    }
+
+    // Declare mechanism motors
+    if (allMechanismMotors.length > 0) {
+      code += `    // Mechanism motors\n`
+      allMechanismMotors.forEach(motor => {
+        code += `    private DcMotor ${motor.name};\n`
+      })
+      code += `\n`
+    }
+
+    // Declare servos
+    if (allServos.length > 0) {
+      code += `    // Servos\n`
+      allServos.forEach(servo => {
+        code += `    private Servo ${servo.name};\n`
+      })
+      code += `\n`
+    }
+
+    code += `    private IMU imu;\n\n`
+
+    code += `    @Override
+    public void runOpMode() {
+        // Initialize drivetrain motors\n`
+
+    // Initialize drivetrain motors
+    enabledDriveMotors.forEach(motor => {
+      code += `        ${motor.varName} = hardwareMap.get(DcMotor.class, "${motor.varName}");\n`
+      if (motor.reversed) {
+        code += `        ${motor.varName}.setDirection(DcMotor.Direction.REVERSE);\n`
+      }
+      code += `        ${motor.varName}.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);\n`
+    })
+
+    if (enabledDriveMotors.length > 0) code += `\n`
+
+    // Initialize mechanism motors
+    if (allMechanismMotors.length > 0) {
+      code += `        // Initialize mechanism motors\n`
+      allMechanismMotors.forEach(motor => {
+        code += `        ${motor.name} = hardwareMap.get(DcMotor.class, "${motor.name}");\n`
+        if (motor.reversed) {
+          code += `        ${motor.name}.setDirection(DcMotor.Direction.REVERSE);\n`
+        }
+        code += `        ${motor.name}.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);\n`
+      })
+      code += `\n`
+    }
+
+    // Initialize servos
+    if (allServos.length > 0) {
+      code += `        // Initialize servos\n`
+      allServos.forEach(servo => {
+        code += `        ${servo.name} = hardwareMap.get(Servo.class, "${servo.name}");\n`
+      })
+      code += `\n`
+    }
+
+    // Initialize IMU
+    code += `        // Initialize IMU
+        imu = hardwareMap.get(IMU.class, "imu");
+        IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
+            RevHubOrientationOnRobot.LogoFacingDirection.UP,
+            RevHubOrientationOnRobot.UsbFacingDirection.FORWARD));
+        imu.initialize(parameters);
+
+        telemetry.addData("Status", "Initialized");
+        telemetry.update();
+
+        waitForStart();
+
+        if (opModeIsActive()) {
+`
+
+    // Generate movement and action code
+    orderedNodes.forEach(node => {
+      const data = node.data
+
+      // Movement blocks - time-based
+      if (data.type === 'forward') {
+        const distance = data.distance || 24
+        const time = (distance / 24) * 1000 // Assume ~24 inches per second
+        code += `\n            // Move forward ${distance} inches\n`
+        enabledDriveMotors.forEach(motor => {
+          code += `            ${motor.varName}.setPower(0.5);\n`
+        })
+        code += `            sleep(${time});\n`
+        enabledDriveMotors.forEach(motor => {
+          code += `            ${motor.varName}.setPower(0);\n`
+        })
+      } else if (data.type === 'backward') {
+        const distance = data.distance || 24
+        const time = (distance / 24) * 1000
+        code += `\n            // Move backward ${distance} inches\n`
+        enabledDriveMotors.forEach(motor => {
+          code += `            ${motor.varName}.setPower(-0.5);\n`
+        })
+        code += `            sleep(${time});\n`
+        enabledDriveMotors.forEach(motor => {
+          code += `            ${motor.varName}.setPower(0);\n`
+        })
+      } else if (data.type === 'strafeLeft') {
+        const distance = data.distance || 24
+        const time = (distance / 24) * 1000
+        code += `\n            // Strafe left ${distance} inches\n`
+        code += `            // Note: Adjust motor powers based on your drivetrain configuration\n`
+        if (enabledDriveMotors.length >= 4) {
+          code += `            frontLeft.setPower(-0.5);\n`
+          code += `            frontRight.setPower(0.5);\n`
+          code += `            backLeft.setPower(0.5);\n`
+          code += `            backRight.setPower(-0.5);\n`
+        }
+        code += `            sleep(${time});\n`
+        enabledDriveMotors.forEach(motor => {
+          code += `            ${motor.varName}.setPower(0);\n`
+        })
+      } else if (data.type === 'strafeRight') {
+        const distance = data.distance || 24
+        const time = (distance / 24) * 1000
+        code += `\n            // Strafe right ${distance} inches\n`
+        code += `            // Note: Adjust motor powers based on your drivetrain configuration\n`
+        if (enabledDriveMotors.length >= 4) {
+          code += `            frontLeft.setPower(0.5);\n`
+          code += `            frontRight.setPower(-0.5);\n`
+          code += `            backLeft.setPower(-0.5);\n`
+          code += `            backRight.setPower(0.5);\n`
+        }
+        code += `            sleep(${time});\n`
+        enabledDriveMotors.forEach(motor => {
+          code += `            ${motor.varName}.setPower(0);\n`
+        })
+      } else if (data.type === 'turnLeft' || data.type === 'turnRight') {
+        const degrees = data.degrees || 90
+        const time = (degrees / 90) * 800 // Approximate time for 90 degree turn
+        const direction = data.type === 'turnLeft' ? 'left' : 'right'
+        const powerMultiplier = data.type === 'turnLeft' ? -1 : 1
+        code += `\n            // Turn ${direction} ${degrees} degrees\n`
+        enabledDriveMotors.forEach(motor => {
+          const isLeft = motor.varName.includes('Left')
+          const power = (isLeft ? -powerMultiplier : powerMultiplier) * 0.5
+          code += `            ${motor.varName}.setPower(${power});\n`
+        })
+        code += `            sleep(${time});\n`
+        enabledDriveMotors.forEach(motor => {
+          code += `            ${motor.varName}.setPower(0);\n`
+        })
+      } else if (data.type === 'wait') {
+        const duration = data.duration || 1000
+        code += `\n            // Wait ${duration}ms\n`
+        code += `            sleep(${duration});\n`
+      } else if (data.type === 'setServo' && data.servoName) {
+        code += `\n            // Set servo ${data.servoName}\n`
+        code += `            ${data.servoName}.setPosition(${data.position || 0.5});\n`
+      } else if (data.type === 'runMotor' && data.motorName) {
+        code += `\n            // Run motor ${data.motorName}\n`
+        code += `            ${data.motorName}.setPower(${data.power || 0.5});\n`
+      } else if (data.type === 'stopMotor' && data.motorName) {
+        code += `\n            // Stop motor ${data.motorName}\n`
+        code += `            ${data.motorName}.setPower(0);\n`
+      } else if (data.type === 'setMotorPower' && data.motorName) {
+        code += `\n            // Set motor power ${data.motorName}\n`
+        code += `            ${data.motorName}.setPower(${data.power || 0.5});\n`
+      } else if (data.type === 'custom' && data.customCode) {
+        code += `\n            // Custom code\n`
+        code += `            ${data.customCode}\n`
+      }
+    })
+
+    code += `        }
+    }
+}
+`
+
+    const blob = new Blob([code], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Simple.java`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  const exportEncoderCode = () => {
+    // Build ordered list of nodes
+    const orderedNodes: Node<BlockNodeData>[] = []
+    const visited = new Set<string>()
+
+    const traverseNodes = (nodeId: string) => {
+      if (visited.has(nodeId)) return
+      visited.add(nodeId)
+
+      const node = nodes.find(n => n.id === nodeId)
+      if (node && node.type === 'blockNode') {
+        orderedNodes.push(node)
+      }
+
+      const outgoingEdges = edges.filter(e => e.source === nodeId)
+      outgoingEdges.forEach(edge => traverseNodes(edge.target))
+    }
+
+    traverseNodes('start')
+
+    // Get all enabled motors from drivetrain based on template type
+    const enabledDriveMotors = [
+      { varName: 'frontLeft', port: '0', enabled: true, reversed: false },
+      { varName: 'frontRight', port: '1', enabled: true, reversed: false },
+      { varName: 'backLeft', port: '2', enabled: true, reversed: false },
+      { varName: 'backRight', port: '3', enabled: true, reversed: false },
+    ]
+
+    // Get all mechanism motors
+    const enabledControlMotors = controlMotors.filter(m => m.enabled)
+    const enabledExpansionMotors = expansionMotors.filter(m => m.enabled)
+    const allMechanismMotors = [...enabledControlMotors, ...enabledExpansionMotors]
+
+    const enabledControlServos = controlServos.filter(s => s.enabled)
+    const enabledExpansionServos = expansionServos.filter(s => s.enabled)
+    const allServos = [...enabledControlServos, ...enabledExpansionServos]
+
+    // Constants for encoder calculations
+    const COUNTS_PER_MOTOR_REV = 537.7  // goBILDA 5202/5203 series
+    const DRIVE_GEAR_REDUCTION = 1.0
+    const WHEEL_DIAMETER_INCHES = 4.0
+    const COUNTS_PER_INCH = (COUNTS_PER_MOTOR_REV * DRIVE_GEAR_REDUCTION) / (WHEEL_DIAMETER_INCHES * Math.PI)
+
+    // Start building code
+    let code = `package org.firstinspires.ftc.teamcode;
+
+import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.hardware.IMU;
+import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
+
+@Autonomous(name = "${project?.name || 'Auto'} (Encoder)", group = "Auto")
+public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Encoder extends LinearOpMode {
+
+    // Encoder constants - ADJUST THESE FOR YOUR ROBOT
+    static final double COUNTS_PER_MOTOR_REV = ${COUNTS_PER_MOTOR_REV};
+    static final double DRIVE_GEAR_REDUCTION = ${DRIVE_GEAR_REDUCTION};
+    static final double WHEEL_DIAMETER_INCHES = ${WHEEL_DIAMETER_INCHES};
+    static final double COUNTS_PER_INCH = (COUNTS_PER_MOTOR_REV * DRIVE_GEAR_REDUCTION) / (WHEEL_DIAMETER_INCHES * Math.PI);
+    static final double DRIVE_SPEED = 0.6;
+    static final double TURN_SPEED = 0.5;
+`
+
+    // Declare drivetrain motors
+    if (enabledDriveMotors.length > 0) {
+      code += `\n    // Drivetrain motors\n`
+      enabledDriveMotors.forEach(motor => {
+        code += `    private DcMotor ${motor.varName};\n`
+      })
+    }
+
+    // Declare mechanism motors
+    if (allMechanismMotors.length > 0) {
+      code += `\n    // Mechanism motors\n`
+      allMechanismMotors.forEach(motor => {
+        code += `    private DcMotor ${motor.name};\n`
+      })
+    }
+
+    // Declare servos
+    if (allServos.length > 0) {
+      code += `\n    // Servos\n`
+      allServos.forEach(servo => {
+        code += `    private Servo ${servo.name};\n`
+      })
+    }
+
+    code += `\n    private IMU imu;\n\n`
+
+    code += `    @Override
+    public void runOpMode() {
+        // Initialize drivetrain motors\n`
+
+    // Initialize drivetrain motors with encoder setup
+    enabledDriveMotors.forEach(motor => {
+      code += `        ${motor.varName} = hardwareMap.get(DcMotor.class, "${motor.varName}");\n`
+      if (motor.reversed) {
+        code += `        ${motor.varName}.setDirection(DcMotor.Direction.REVERSE);\n`
+      }
+      code += `        ${motor.varName}.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);\n`
+      code += `        ${motor.varName}.setMode(DcMotor.RunMode.RUN_USING_ENCODER);\n`
+      code += `        ${motor.varName}.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);\n`
+    })
+
+    if (enabledDriveMotors.length > 0) code += `\n`
+
+    // Initialize mechanism motors
+    if (allMechanismMotors.length > 0) {
+      code += `        // Initialize mechanism motors\n`
+      allMechanismMotors.forEach(motor => {
+        code += `        ${motor.name} = hardwareMap.get(DcMotor.class, "${motor.name}");\n`
+        if (motor.reversed) {
+          code += `        ${motor.name}.setDirection(DcMotor.Direction.REVERSE);\n`
+        }
+        code += `        ${motor.name}.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);\n`
+        // Add encoder setup for mechanism motors that have encoders enabled
+        if (motor.encoderEnabled) {
+          code += `        ${motor.name}.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);\n`
+          code += `        ${motor.name}.setMode(DcMotor.RunMode.RUN_USING_ENCODER);\n`
+        }
+      })
+      code += `\n`
+    }
+
+    // Initialize servos
+    if (allServos.length > 0) {
+      code += `        // Initialize servos\n`
+      allServos.forEach(servo => {
+        code += `        ${servo.name} = hardwareMap.get(Servo.class, "${servo.name}");\n`
+      })
+      code += `\n`
+    }
+
+    // Initialize IMU
+    code += `        // Initialize IMU
+        imu = hardwareMap.get(IMU.class, "imu");
+        IMU.Parameters parameters = new IMU.Parameters(new RevHubOrientationOnRobot(
+            RevHubOrientationOnRobot.LogoFacingDirection.UP,
+            RevHubOrientationOnRobot.UsbFacingDirection.FORWARD));
+        imu.initialize(parameters);
+
+        telemetry.addData("Status", "Initialized");
+        telemetry.update();
+
+        waitForStart();
+
+        if (opModeIsActive()) {
+`
+
+    // Generate movement code with encoder-based movements
+    orderedNodes.forEach(node => {
+      const data = node.data
+
+      // Movement blocks - encoder-based
+      if (data.type === 'forward') {
+        const distance = data.distance || 24
+        code += `\n            // Move forward ${distance} inches\n`
+        code += `            encoderDrive(DRIVE_SPEED, ${distance}, ${distance}, ${distance}, ${distance}, 5.0);\n`
+      } else if (data.type === 'backward') {
+        const distance = data.distance || 24
+        code += `\n            // Move backward ${distance} inches\n`
+        code += `            encoderDrive(DRIVE_SPEED, ${-distance}, ${-distance}, ${-distance}, ${-distance}, 5.0);\n`
+      } else if (data.type === 'strafeLeft') {
+        const distance = data.distance || 24
+        code += `\n            // Strafe left ${distance} inches\n`
+        code += `            encoderDrive(DRIVE_SPEED, ${-distance}, ${distance}, ${distance}, ${-distance}, 5.0);\n`
+      } else if (data.type === 'strafeRight') {
+        const distance = data.distance || 24
+        code += `\n            // Strafe right ${distance} inches\n`
+        code += `            encoderDrive(DRIVE_SPEED, ${distance}, ${-distance}, ${-distance}, ${distance}, 5.0);\n`
+      } else if (data.type === 'turnLeft') {
+        const degrees = data.degrees || 90
+        const turnInches = (degrees / 360) * (12 * Math.PI) // Assuming ~12" wheelbase
+        code += `\n            // Turn left ${degrees} degrees\n`
+        code += `            encoderDrive(TURN_SPEED, ${-turnInches}, ${turnInches}, ${-turnInches}, ${turnInches}, 5.0);\n`
+      } else if (data.type === 'turnRight') {
+        const degrees = data.degrees || 90
+        const turnInches = (degrees / 360) * (12 * Math.PI)
+        code += `\n            // Turn right ${degrees} degrees\n`
+        code += `            encoderDrive(TURN_SPEED, ${turnInches}, ${-turnInches}, ${turnInches}, ${-turnInches}, 5.0);\n`
+      } else if (data.type === 'wait') {
+        const duration = data.duration || 1000
+        code += `\n            // Wait ${duration}ms\n`
+        code += `            sleep(${duration});\n`
+      } else if (data.type === 'setServo' && data.servoName) {
+        code += `\n            // Set servo ${data.servoName}\n`
+        code += `            ${data.servoName}.setPosition(${data.position || 0.5});\n`
+      } else if (data.type === 'runMotor' && data.motorName) {
+        code += `\n            // Run motor ${data.motorName}\n`
+        code += `            ${data.motorName}.setPower(${data.power || 0.5});\n`
+      } else if (data.type === 'stopMotor' && data.motorName) {
+        code += `\n            // Stop motor ${data.motorName}\n`
+        code += `            ${data.motorName}.setPower(0);\n`
+      } else if (data.type === 'setMotorPower' && data.motorName) {
+        code += `\n            // Set motor power ${data.motorName}\n`
+        code += `            ${data.motorName}.setPower(${data.power || 0.5});\n`
+      } else if (data.type === 'custom' && data.customCode) {
+        code += `\n            // Custom code\n`
+        code += `            ${data.customCode}\n`
+      }
+    })
+
+    code += `        }
+    }
+
+    // Encoder drive method
+    public void encoderDrive(double speed, double frontLeftInches, double frontRightInches,
+                            double backLeftInches, double backRightInches, double timeoutS) {
+        int newFrontLeftTarget;
+        int newFrontRightTarget;
+        int newBackLeftTarget;
+        int newBackRightTarget;
+
+        if (opModeIsActive()) {
+            // Calculate new target positions
+`
+
+    if (enabledDriveMotors.find(m => m.varName === 'frontLeft')) {
+      code += `            newFrontLeftTarget = frontLeft.getCurrentPosition() + (int)(frontLeftInches * COUNTS_PER_INCH);\n`
+    }
+    if (enabledDriveMotors.find(m => m.varName === 'frontRight')) {
+      code += `            newFrontRightTarget = frontRight.getCurrentPosition() + (int)(frontRightInches * COUNTS_PER_INCH);\n`
+    }
+    if (enabledDriveMotors.find(m => m.varName === 'backLeft')) {
+      code += `            newBackLeftTarget = backLeft.getCurrentPosition() + (int)(backLeftInches * COUNTS_PER_INCH);\n`
+    }
+    if (enabledDriveMotors.find(m => m.varName === 'backRight')) {
+      code += `            newBackRightTarget = backRight.getCurrentPosition() + (int)(backRightInches * COUNTS_PER_INCH);\n`
+    }
+
+    code += `
+            // Set target positions
+`
+
+    if (enabledDriveMotors.find(m => m.varName === 'frontLeft')) {
+      code += `            frontLeft.setTargetPosition(newFrontLeftTarget);\n`
+    }
+    if (enabledDriveMotors.find(m => m.varName === 'frontRight')) {
+      code += `            frontRight.setTargetPosition(newFrontRightTarget);\n`
+    }
+    if (enabledDriveMotors.find(m => m.varName === 'backLeft')) {
+      code += `            backLeft.setTargetPosition(newBackLeftTarget);\n`
+    }
+    if (enabledDriveMotors.find(m => m.varName === 'backRight')) {
+      code += `            backRight.setTargetPosition(newBackRightTarget);\n`
+    }
+
+    code += `
+            // Turn on RUN_TO_POSITION
+`
+
+    enabledDriveMotors.forEach(motor => {
+      code += `            ${motor.varName}.setMode(DcMotor.RunMode.RUN_TO_POSITION);\n`
+    })
+
+    code += `
+            // Start motion
+`
+
+    enabledDriveMotors.forEach(motor => {
+      code += `            ${motor.varName}.setPower(Math.abs(speed));\n`
+    })
+
+    code += `
+            // Wait until motors reach target or timeout
+            runtime.reset();
+            while (opModeIsActive() &&
+                   (runtime.seconds() < timeoutS) &&\n`
+
+    const motorChecks = enabledDriveMotors.map(m => `                   (${m.varName}.isBusy())`).join(' &&\n')
+    code += motorChecks
+
+    code += `) {
+                // Display telemetry
+                telemetry.addData("Running to", "Target");
+`
+
+    enabledDriveMotors.forEach(motor => {
+      code += `                telemetry.addData("${motor.varName}", "${motor.varName} at %7d", ${motor.varName}.getCurrentPosition());\n`
+    })
+
+    code += `                telemetry.update();
+            }
+
+            // Stop all motion
+`
+
+    enabledDriveMotors.forEach(motor => {
+      code += `            ${motor.varName}.setPower(0);\n`
+    })
+
+    code += `
+            // Turn off RUN_TO_POSITION
+`
+
+    enabledDriveMotors.forEach(motor => {
+      code += `            ${motor.varName}.setMode(DcMotor.RunMode.RUN_USING_ENCODER);\n`
+    })
+
+    code += `
+            sleep(250);   // Pause after each move
+        }
+    }
+}
+`
+
+    // Need to add runtime variable declaration
+    code = code.replace('private IMU imu;', 'private IMU imu;\n    private ElapsedTime runtime = new ElapsedTime();')
+    code = code.replace('import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;',
+      'import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;\nimport com.qualcomm.robotcore.util.ElapsedTime;')
+
+    const blob = new Blob([code], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Encoder.java`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   const exportCode = () => {
-    if (pathMode === 'roadrunner') {
-      exportRoadRunner()
-    } else if (pathMode === 'pedropathing') {
-      exportPedroPathing()
+    setShowExportDialog(true)
+  }
+
+  const handleExportConfirm = () => {
+    setShowExportDialog(false)
+
+    // Save preference if checkbox is checked
+    if (saveExportPreference) {
+      localStorage.setItem('vingvis-export-mode', selectedExportMode)
+      localStorage.setItem('vingvis-save-export-preference', 'true')
     } else {
-      // Export simple Java code as before
-      exportRoadRunner() // Default to RoadRunner for now
+      localStorage.removeItem('vingvis-export-mode')
+      localStorage.removeItem('vingvis-save-export-preference')
+    }
+
+    if (selectedExportMode === 'roadrunner') {
+      exportRoadRunner()
+    } else if (selectedExportMode === 'pedropathing') {
+      exportPedroPathing()
+    } else if (selectedExportMode === 'simple') {
+      exportSimpleCode()
+    } else if (selectedExportMode === 'encoder') {
+      exportEncoderCode()
     }
   }
 
@@ -5078,6 +5715,143 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={closeConfigDialog} className="bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700">
               Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Dialog */}
+      <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-white">Export Code</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Choose the code export format for your autonomous program
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-3">
+              <button
+                onClick={() => setSelectedExportMode('simple')}
+                className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                  selectedExportMode === 'simple'
+                    ? 'border-blue-500 bg-blue-500/10'
+                    : 'border-zinc-700 bg-zinc-800 hover:border-zinc-600'
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-semibold text-white mb-1">Simple Code (Time-Based)</h3>
+                    <p className="text-sm text-zinc-400">
+                      Basic time-based movement with motor power control. Perfect for beginners.
+                    </p>
+                  </div>
+                  {selectedExportMode === 'simple' && (
+                    <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 ml-2">
+                      <div className="w-2 h-2 rounded-full bg-white"></div>
+                    </div>
+                  )}
+                </div>
+              </button>
+
+              <button
+                onClick={() => setSelectedExportMode('encoder')}
+                className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                  selectedExportMode === 'encoder'
+                    ? 'border-green-500 bg-green-500/10'
+                    : 'border-zinc-700 bg-zinc-800 hover:border-zinc-600'
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-semibold text-white mb-1">Encoder Code (Position-Based)</h3>
+                    <p className="text-sm text-zinc-400">
+                      Precise encoder-based movement with RUN_TO_POSITION mode. Automatically configures encoders.
+                    </p>
+                  </div>
+                  {selectedExportMode === 'encoder' && (
+                    <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0 ml-2">
+                      <div className="w-2 h-2 rounded-full bg-white"></div>
+                    </div>
+                  )}
+                </div>
+              </button>
+
+              <button
+                onClick={() => setSelectedExportMode('pedropathing')}
+                className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                  selectedExportMode === 'pedropathing'
+                    ? 'border-purple-500 bg-purple-500/10'
+                    : 'border-zinc-700 bg-zinc-800 hover:border-zinc-600'
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-semibold text-white mb-1">PedroPathing</h3>
+                    <p className="text-sm text-zinc-400">
+                      Advanced path following with the PedroPathing library. Smooth curves and precise control.
+                    </p>
+                  </div>
+                  {selectedExportMode === 'pedropathing' && (
+                    <div className="w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center flex-shrink-0 ml-2">
+                      <div className="w-2 h-2 rounded-full bg-white"></div>
+                    </div>
+                  )}
+                </div>
+              </button>
+
+              <button
+                onClick={() => setSelectedExportMode('roadrunner')}
+                className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                  selectedExportMode === 'roadrunner'
+                    ? 'border-orange-500 bg-orange-500/10'
+                    : 'border-zinc-700 bg-zinc-800 hover:border-zinc-600'
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-semibold text-white mb-1">RoadRunner</h3>
+                    <p className="text-sm text-zinc-400">
+                      Industry-standard path following with trajectory sequences. Requires RoadRunner quickstart.
+                    </p>
+                  </div>
+                  {selectedExportMode === 'roadrunner' && (
+                    <div className="w-5 h-5 rounded-full bg-orange-500 flex items-center justify-center flex-shrink-0 ml-2">
+                      <div className="w-2 h-2 rounded-full bg-white"></div>
+                    </div>
+                  )}
+                </div>
+              </button>
+            </div>
+
+            {/* Save preference checkbox */}
+            <div className="flex items-center space-x-2 pt-2 border-t border-zinc-800">
+              <Switch
+                id="save-export-preference"
+                checked={saveExportPreference}
+                onCheckedChange={setSaveExportPreference}
+              />
+              <Label htmlFor="save-export-preference" className="text-sm text-zinc-300 cursor-pointer">
+                Save for next export (auto-select this option)
+              </Label>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowExportDialog(false)}
+              className="bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleExportConfirm}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Export {selectedExportMode === 'simple' ? 'Simple' : selectedExportMode === 'encoder' ? 'Encoder' : selectedExportMode === 'pedropathing' ? 'PedroPathing' : 'RoadRunner'} Code
             </Button>
           </div>
         </DialogContent>
