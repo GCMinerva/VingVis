@@ -731,6 +731,11 @@ function CurvesEditorInner() {
     drawField()
   }, [drawField])
 
+  // Update hardware status whenever nodes, edges, or hardware config changes
+  useEffect(() => {
+    updateHardwareStatus()
+  }, [nodes, edges, servos, motors])
+
   const drawRobot = (ctx: CanvasRenderingContext2D, x: number, y: number, heading: number, scale: number) => {
     const canvasX = (x / 144) * ctx.canvas.width
     const canvasY = (y / 144) * ctx.canvas.height
@@ -761,6 +766,75 @@ function CurvesEditorInner() {
     ctx.fill()
 
     ctx.restore()
+  }
+
+  // Update hardware status based on block execution order
+  const updateHardwareStatus = () => {
+    const newServoPositions: {[key: string]: number} = {}
+    const newMotorSpeeds: {[key: string]: number} = {}
+
+    // Initialize with default values
+    servos.forEach(servo => {
+      newServoPositions[servo.name] = 0.5 // Default to 50%
+    })
+    motors.forEach(motor => {
+      newMotorSpeeds[motor.name] = 0 // Default to 0%
+    })
+
+    // Build ordered list of nodes by following edges from start
+    const orderedNodes: Node<BlockNodeData>[] = []
+    const visited = new Set<string>()
+
+    const traverseNodes = (nodeId: string) => {
+      if (visited.has(nodeId)) return
+      visited.add(nodeId)
+
+      const node = nodes.find(n => n.id === nodeId)
+      if (node && node.type === 'blockNode') {
+        orderedNodes.push(node)
+      }
+
+      // Find outgoing edges
+      const outgoingEdges = edges.filter(e => e.source === nodeId)
+      outgoingEdges.forEach(edge => traverseNodes(edge.target))
+    }
+
+    traverseNodes('start')
+
+    // Process each block in execution order to get final hardware state
+    orderedNodes.forEach(node => {
+      const data = node.data
+
+      // Update servo positions from servo blocks
+      if (data.type === 'setServo' || data.type === 'continuousServo') {
+        const servoName = data.servoName || servos[0]?.name
+        const position = data.position !== undefined ? data.position : 0.5
+        if (servoName) {
+          newServoPositions[servoName] = position
+        }
+      }
+
+      // Update motor speeds from motor blocks
+      if (data.type === 'runMotor' || data.type === 'setMotorPower') {
+        const motorName = data.motorName || motors[4]?.name
+        const power = data.power !== undefined ? data.power : 0.5
+        if (motorName) {
+          newMotorSpeeds[motorName] = power
+        }
+      }
+
+      // Reset motor speed when stop motor is called
+      if (data.type === 'stopMotor') {
+        const motorName = data.motorName || motors[4]?.name
+        if (motorName) {
+          newMotorSpeeds[motorName] = 0
+        }
+      }
+    })
+
+    // Update state with new hardware status
+    setServoPositions(newServoPositions)
+    setMotorSpeeds(newMotorSpeeds)
   }
 
   const getWaypoints = (): {x: number, y: number, heading: number}[] => {
@@ -3353,7 +3427,6 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                         value={[selectedNode.data.position || 0.5]}
                         onValueChange={([v]) => {
                           updateNodeData(selectedNode.id, { position: v })
-                          setServoPositions({ ...servoPositions, [selectedNode.data.servoName || servos[0]?.name]: v })
                         }}
                         max={1}
                         step={0.01}
@@ -3387,7 +3460,6 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                         value={[selectedNode.data.power || 0.5]}
                         onValueChange={([v]) => {
                           updateNodeData(selectedNode.id, { power: v })
-                          setMotorSpeeds({ ...motorSpeeds, [selectedNode.data.motorName || motors[0]?.name]: v })
                         }}
                         max={1}
                         step={0.1}
