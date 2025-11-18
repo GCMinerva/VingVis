@@ -142,11 +142,12 @@ function RobotChassis({ type, isAnimating }: { type: DriveTrainType; isAnimating
   }
 
   return (
-    <div className="relative w-full h-32 flex items-center justify-center overflow-hidden">
+    <div className="relative w-full h-40 md:h-48 flex items-center justify-center overflow-hidden bg-zinc-900/30 rounded-lg border border-zinc-800">
       <motion.svg
-        width="100"
-        height="100"
+        width="140"
+        height="140"
         viewBox="0 0 100 100"
+        className="drop-shadow-lg"
         animate={isAnimating ? getMovementAnimation() : {}}
         transition={{
           duration: 4,
@@ -161,21 +162,23 @@ function RobotChassis({ type, isAnimating }: { type: DriveTrainType; isAnimating
           width="60"
           height="60"
           fill="#18181b"
-          stroke="#3f3f46"
-          strokeWidth="2"
-          rx="4"
+          stroke="#52525b"
+          strokeWidth="2.5"
+          rx="5"
         />
 
         {/* Robot center indicator */}
-        <circle cx="50" cy="50" r="4" fill="#ef4444" />
+        <circle cx="50" cy="50" r="5" fill="#ef4444" opacity="0.8" />
 
         {/* Wheels */}
         {renderWheels()}
 
         {/* Direction arrow */}
         <motion.path
-          d="M 50 25 L 55 35 L 45 35 Z"
+          d="M 50 25 L 57 37 L 43 37 Z"
           fill="#10b981"
+          stroke="#059669"
+          strokeWidth="1"
           animate={
             isAnimating
               ? {
@@ -192,24 +195,24 @@ function RobotChassis({ type, isAnimating }: { type: DriveTrainType; isAnimating
 
       {/* Movement capability indicators */}
       {isAnimating && (
-        <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1">
+        <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-2">
           {def.movementCapabilities.forward && (
             <motion.div
-              className="w-1.5 h-1.5 rounded-full bg-green-500"
+              className="w-2 h-2 rounded-full bg-green-500"
               animate={{ opacity: [0.3, 1, 0.3] }}
               transition={{ duration: 1, repeat: Infinity }}
             />
           )}
           {def.movementCapabilities.strafe && (
             <motion.div
-              className="w-1.5 h-1.5 rounded-full bg-blue-500"
+              className="w-2 h-2 rounded-full bg-blue-500"
               animate={{ opacity: [0.3, 1, 0.3] }}
               transition={{ duration: 1, repeat: Infinity, delay: 0.3 }}
             />
           )}
           {def.movementCapabilities.rotate && (
             <motion.div
-              className="w-1.5 h-1.5 rounded-full bg-purple-500"
+              className="w-2 h-2 rounded-full bg-purple-500"
               animate={{ opacity: [0.3, 1, 0.3] }}
               transition={{ duration: 1, repeat: Infinity, delay: 0.6 }}
             />
@@ -246,15 +249,15 @@ export function DriveTrainSelector({ selectedType, onSelect }: DriveTrainSelecto
   }
 
   return (
-    <div className="space-y-4">
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-white mb-2">Choose Your Drive Train</h2>
-        <p className="text-sm text-muted-foreground">
+    <div className="space-y-4 w-full">
+      <div className="text-center mb-4">
+        <h2 className="text-xl md:text-2xl font-bold text-white mb-2">Choose Your Drive Train</h2>
+        <p className="text-xs md:text-sm text-muted-foreground">
           Select a drive system for your robot. Hover to see animations!
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
         {driveTrainTypes.map((type) => {
           const def = DRIVETRAIN_DEFINITIONS[type]
           const isSelected = selectedType === type
@@ -267,27 +270,28 @@ export function DriveTrainSelector({ selectedType, onSelect }: DriveTrainSelecto
               whileTap={{ scale: 0.98 }}
               onHoverStart={() => setHoveredType(type)}
               onHoverEnd={() => setHoveredType(null)}
+              className="w-full"
             >
               <Card
-                className={`cursor-pointer transition-all h-full ${
+                className={`cursor-pointer transition-all h-full min-h-[340px] md:min-h-[360px] ${
                   isSelected
                     ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20'
                     : 'border-border/50 bg-background/50 hover:bg-background/80 hover:border-primary/30'
                 }`}
                 onClick={() => onSelect(type)}
               >
-                <CardHeader className="pb-3">
+                <CardHeader className="pb-2 px-3 md:px-6">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <CardTitle className="text-base flex items-center gap-2">
+                      <CardTitle className="text-sm md:text-base flex items-center gap-2">
                         {def.name}
-                        {isSelected && <Check className="h-4 w-4 text-primary" />}
+                        {isSelected && <Check className="h-4 w-4 text-primary flex-shrink-0" />}
                       </CardTitle>
-                      <div className="flex gap-2 mt-2">
-                        <Badge variant="outline" className={`text-xs ${getComplexityColor(def.complexity)}`}>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        <Badge variant="outline" className={`text-[10px] md:text-xs ${getComplexityColor(def.complexity)}`}>
                           {def.complexity}
                         </Badge>
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="outline" className="text-[10px] md:text-xs">
                           {def.motorCount} motors
                         </Badge>
                       </div>
@@ -295,36 +299,36 @@ export function DriveTrainSelector({ selectedType, onSelect }: DriveTrainSelecto
                   </div>
                 </CardHeader>
 
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-2 md:space-y-3 px-3 md:px-6 pb-3 md:pb-6">
                   {/* Robot visualization */}
                   <RobotChassis type={type} isAnimating={isHovered || isSelected} />
 
                   {/* Description */}
-                  <CardDescription className="text-xs min-h-[40px]">
+                  <CardDescription className="text-xs md:text-sm min-h-[36px] md:min-h-[40px] leading-relaxed">
                     {def.description}
                   </CardDescription>
 
                   {/* Movement capabilities */}
                   <div className="pt-2 border-t border-border/50">
-                    <p className="text-[10px] text-muted-foreground mb-1.5">Movement:</p>
+                    <p className="text-[10px] text-muted-foreground mb-1.5 font-medium">Movement:</p>
                     <div className="flex flex-wrap gap-1">
                       {def.movementCapabilities.forward && (
-                        <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
+                        <Badge variant="secondary" className="text-[9px] md:text-[10px] px-1.5 py-0.5">
                           Forward
                         </Badge>
                       )}
                       {def.movementCapabilities.strafe && (
-                        <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
+                        <Badge variant="secondary" className="text-[9px] md:text-[10px] px-1.5 py-0.5">
                           Strafe
                         </Badge>
                       )}
                       {def.movementCapabilities.rotate && (
-                        <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
+                        <Badge variant="secondary" className="text-[9px] md:text-[10px] px-1.5 py-0.5">
                           Rotate
                         </Badge>
                       )}
                       {def.movementCapabilities.diagonal && (
-                        <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
+                        <Badge variant="secondary" className="text-[9px] md:text-[10px] px-1.5 py-0.5">
                           Diagonal
                         </Badge>
                       )}

@@ -302,8 +302,8 @@ export default function DashboardPage() {
                   </CardContent>
                 </Card>
               </DialogTrigger>
-              <DialogContent className="bg-background/95 backdrop-blur-sm border-border/50 max-w-4xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
+              <DialogContent className="bg-background/95 backdrop-blur-sm border-border/50 max-w-[95vw] sm:max-w-[90vw] lg:max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+                <DialogHeader className="flex-shrink-0">
                   <DialogTitle>
                     {createStep === 'drivetrain' ? 'Choose Drive Train' : 'Configure Project'}
                   </DialogTitle>
@@ -315,7 +315,7 @@ export default function DashboardPage() {
                 </DialogHeader>
 
                 {createStep === 'drivetrain' ? (
-                  <div className="py-4">
+                  <div className="flex-1 overflow-y-auto py-4 px-1">
                     <DriveTrainSelector
                       selectedType={createFormData.templateType}
                       onSelect={(type) => setCreateFormData({ ...createFormData, templateType: type })}
@@ -434,7 +434,7 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                <DialogFooter>
+                <DialogFooter className="flex-shrink-0 mt-4">
                   {createStep === 'config' && (
                     <Button
                       variant="outline"
