@@ -15,6 +15,7 @@ import { Slider } from "@/components/ui/slider"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import ReactFlow, {
   Background,
   Controls,
@@ -83,6 +84,9 @@ import {
   Maximize2,
   Minimize2,
   RotateCcw as RotateIcon,
+  GripVertical,
+  Plus,
+  X,
 } from "lucide-react"
 
 type Project = {
@@ -290,6 +294,21 @@ function CurvesEditorInner() {
   const [useCurves, setUseCurves] = useState(true)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
+  // Sidebar drag and resize states
+  const [sidebarWidth, setSidebarWidth] = useState(320)
+  const [sidebarPosition, setSidebarPosition] = useState({ x: 0, y: 0 })
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false)
+  const [isDraggingSidebar, setIsDraggingSidebar] = useState(false)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [isSidebarFloating, setIsSidebarFloating] = useState(false)
+
+  // Hardware configuration dialog states
+  type ConfigDialogType = 'motor' | 'servo' | 'i2c' | 'digital' | 'analog' | null
+  const [configDialogOpen, setConfigDialogOpen] = useState(false)
+  const [configDialogType, setConfigDialogType] = useState<ConfigDialogType>(null)
+  const [configDialogHub, setConfigDialogHub] = useState<'control' | 'expansion'>('control')
+  const [configDialogPort, setConfigDialogPort] = useState(0)
+
   const [actions, setActions] = useState<ActionBlock[]>([])
   const [selectedAction, setSelectedAction] = useState<ActionBlock | null>(null)
 
@@ -419,6 +438,82 @@ function CurvesEditorInner() {
   // Servo/Motor preview states
   const [servoPositions, setServoPositions] = useState<{[key: string]: number}>({})
   const [motorSpeeds, setMotorSpeeds] = useState<{[key: string]: number}>({})
+
+  // Sidebar resize handlers
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizingSidebar(true)
+  }
+
+  const handleResizeMove = useCallback((e: MouseEvent) => {
+    if (isResizingSidebar) {
+      const newWidth = Math.max(250, Math.min(600, e.clientX - (isSidebarFloating ? sidebarPosition.x : 0)))
+      setSidebarWidth(newWidth)
+    }
+  }, [isResizingSidebar, isSidebarFloating, sidebarPosition.x])
+
+  const handleResizeEnd = useCallback(() => {
+    setIsResizingSidebar(false)
+  }, [])
+
+  // Sidebar drag handlers
+  const handleDragStart = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsDraggingSidebar(true)
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    setDragOffset({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    })
+  }
+
+  const handleDragMove = useCallback((e: MouseEvent) => {
+    if (isDraggingSidebar) {
+      setSidebarPosition({
+        x: e.clientX - dragOffset.x,
+        y: e.clientY - dragOffset.y
+      })
+    }
+  }, [isDraggingSidebar, dragOffset])
+
+  const handleDragEnd = useCallback(() => {
+    setIsDraggingSidebar(false)
+  }, [])
+
+  // Add mouse move and up listeners
+  useEffect(() => {
+    if (isResizingSidebar) {
+      document.addEventListener('mousemove', handleResizeMove)
+      document.addEventListener('mouseup', handleResizeEnd)
+      return () => {
+        document.removeEventListener('mousemove', handleResizeMove)
+        document.removeEventListener('mouseup', handleResizeEnd)
+      }
+    }
+  }, [isResizingSidebar, handleResizeMove, handleResizeEnd])
+
+  useEffect(() => {
+    if (isDraggingSidebar) {
+      document.addEventListener('mousemove', handleDragMove)
+      document.addEventListener('mouseup', handleDragEnd)
+      return () => {
+        document.removeEventListener('mousemove', handleDragMove)
+        document.removeEventListener('mouseup', handleDragEnd)
+      }
+    }
+  }, [isDraggingSidebar, handleDragMove, handleDragEnd])
+
+  // Hardware configuration dialog helper
+  const openConfigDialog = (type: ConfigDialogType, hub: 'control' | 'expansion', port: number) => {
+    setConfigDialogType(type)
+    setConfigDialogHub(hub)
+    setConfigDialogPort(port)
+    setConfigDialogOpen(true)
+  }
+
+  const closeConfigDialog = () => {
+    setConfigDialogOpen(false)
+  }
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -2485,24 +2580,75 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {/* Left: Blocks + Hardware */}
-        <div className={`${sidebarCollapsed ? 'w-12' : 'w-64'} bg-zinc-900 border-r border-zinc-800 flex flex-col transition-all duration-300`}>
-          {/* Collapse Toggle Button */}
-          <div className="p-2 border-b border-zinc-800 flex justify-between items-center">
-            {!sidebarCollapsed && (
-              <span className="text-xs font-semibold text-white">Tools</span>
-            )}
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="h-8 w-8 p-0"
-              title={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+        <div
+          className={`${sidebarCollapsed ? 'w-12' : ''} ${
+            isSidebarFloating ? 'absolute z-50 shadow-2xl' : 'relative'
+          } bg-zinc-900 border-r border-zinc-800 flex flex-col transition-all ${
+            isResizingSidebar || isDraggingSidebar ? '' : 'duration-300'
+          }`}
+          style={{
+            width: sidebarCollapsed ? undefined : `${sidebarWidth}px`,
+            left: isSidebarFloating ? `${sidebarPosition.x}px` : undefined,
+            top: isSidebarFloating ? `${sidebarPosition.y}px` : undefined,
+            height: isSidebarFloating ? '80vh' : '100%',
+          }}
+        >
+          {/* Drag Handle Bar */}
+          {!sidebarCollapsed && (
+            <div
+              className="h-8 bg-zinc-800 border-b border-zinc-700 flex items-center justify-between px-2 cursor-move hover:bg-zinc-700 transition-colors"
+              onMouseDown={handleDragStart}
+              title="Drag to move sidebar"
             >
-              {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-            </Button>
-          </div>
+              <div className="flex items-center gap-2">
+                <Move className="h-3.5 w-3.5 text-zinc-400" />
+                <span className="text-xs font-semibold text-white">Tools</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setIsSidebarFloating(!isSidebarFloating)
+                    if (!isSidebarFloating) {
+                      setSidebarPosition({ x: 20, y: 20 })
+                    }
+                  }}
+                  className="h-6 w-6 p-0"
+                  title={isSidebarFloating ? "Dock sidebar" : "Float sidebar"}
+                >
+                  {isSidebarFloating ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSidebarCollapsed(true)}
+                  className="h-6 w-6 p-0"
+                  title="Hide sidebar"
+                >
+                  <PanelLeftClose className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Collapsed State Button */}
+          {sidebarCollapsed && (
+            <div className="p-2 border-b border-zinc-800 flex justify-center">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setSidebarCollapsed(false)}
+                className="h-8 w-8 p-0"
+                title="Show sidebar"
+              >
+                <PanelLeft className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
 
           {!sidebarCollapsed && (
             <Tabs defaultValue="blocks" className="flex-1 flex flex-col overflow-hidden">
@@ -2627,56 +2773,31 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                       {controlMotors.map((motor) => (
                         <div
                           key={`control-motor-${motor.port}`}
-                          onClick={() => {
-                            const newMotors = [...controlMotors]
-                            newMotors[motor.port].enabled = !newMotors[motor.port].enabled
-                            setControlMotors(newMotors)
-                          }}
-                          className={`p-2 rounded border cursor-pointer transition-all ${
+                          onClick={() => openConfigDialog('motor', 'control', motor.port)}
+                          className={`p-3 rounded border cursor-pointer transition-all hover:scale-105 ${
                             motor.enabled
                               ? 'bg-blue-900/30 border-blue-600 hover:bg-blue-900/40'
-                              : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50'
-                          } ${pathMode === 'pedropathing' && motor.port < 4 ? 'opacity-50' : ''}`}
+                              : 'bg-zinc-900/50 border-zinc-700 hover:bg-zinc-800/50 hover:border-zinc-600'
+                          } ${pathMode === 'pedropathing' && motor.port < 4 ? 'opacity-75' : ''}`}
                         >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-mono text-zinc-400">Port {motor.port}</span>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-mono font-bold text-zinc-300">Port {motor.port}</span>
                             {motor.enabled ? (
-                              <span className="text-[9px] text-blue-400">●  Configured</span>
+                              <span className="text-[9px] text-blue-400 font-semibold">● ON</span>
                             ) : (
                               <span className="text-[9px] text-zinc-500">○ Empty</span>
                             )}
                           </div>
-                          {motor.enabled ? (
-                            <div onClick={(e) => e.stopPropagation()} className="space-y-1">
-                              <Input
-                                value={motor.name}
-                                onChange={(e) => {
-                                  const newMotors = [...controlMotors]
-                                  newMotors[motor.port].name = e.target.value
-                                  setControlMotors(newMotors)
-                                }}
-                                className="h-6 text-[10px] bg-zinc-900"
-                                placeholder="Motor name"
-                                disabled={pathMode === 'pedropathing' && motor.port < 4}
-                              />
-                              <label className="flex items-center gap-1 cursor-pointer text-[10px] text-zinc-400">
-                                <input
-                                  type="checkbox"
-                                  checked={motor.reversed}
-                                  onChange={(e) => {
-                                    const newMotors = [...controlMotors]
-                                    newMotors[motor.port].reversed = e.target.checked
-                                    setControlMotors(newMotors)
-                                  }}
-                                  className="w-3 h-3"
-                                  disabled={pathMode === 'pedropathing' && motor.port < 4}
-                                />
-                                Reversed
-                              </label>
+                          {motor.enabled && (
+                            <div className="space-y-0.5">
+                              <div className="text-[10px] text-blue-200 font-medium truncate">{motor.name}</div>
+                              {motor.reversed && <div className="text-[9px] text-orange-400">↻ Reversed</div>}
                             </div>
-                          ) : (
-                            <div className="text-[10px] text-zinc-500 text-center py-1">
-                              Click to configure
+                          )}
+                          {!motor.enabled && (
+                            <div className="text-[10px] text-zinc-500 text-center">
+                              <Plus className="h-3 w-3 mx-auto mb-0.5" />
+                              Click
                             </div>
                           )}
                         </div>
@@ -3339,6 +3460,19 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
               </ScrollArea>
             </TabsContent>
           </Tabs>
+          )}
+
+          {/* Resize Handle */}
+          {!sidebarCollapsed && (
+            <div
+              className="absolute top-0 right-0 w-1 h-full cursor-col-resize bg-transparent hover:bg-blue-500/50 transition-colors group"
+              onMouseDown={handleResizeStart}
+              title="Drag to resize"
+            >
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-12 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <GripVertical className="h-4 w-4 text-zinc-400" />
+              </div>
+            </div>
           )}
         </div>
 
@@ -4034,6 +4168,154 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
           </div>
         </div>
       </div>
+
+      {/* Hardware Configuration Dialog */}
+      <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
+        <DialogContent className="max-w-md bg-zinc-900 border-zinc-800">
+          <DialogHeader>
+            <DialogTitle className="text-white">
+              Configure {configDialogHub === 'control' ? 'Control' : 'Expansion'} Hub -{' '}
+              {configDialogType === 'motor' && `Motor Port ${configDialogPort}`}
+              {configDialogType === 'servo' && `Servo Port ${configDialogPort}`}
+              {configDialogType === 'i2c' && `I2C Bus ${configDialogPort}`}
+              {configDialogType === 'digital' && `Digital Port ${configDialogPort}`}
+              {configDialogType === 'analog' && `Analog Port ${configDialogPort}`}
+            </DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Configure your hardware device settings below.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Motor Configuration */}
+            {configDialogType === 'motor' && (() => {
+              const motorArray = configDialogHub === 'control' ? controlMotors : expansionMotors
+              const setMotorArray = configDialogHub === 'control' ? setControlMotors : setExpansionMotors
+              const motor = motorArray[configDialogPort]
+
+              return (
+                <>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-white">Enable Motor</Label>
+                    <Switch
+                      checked={motor.enabled}
+                      onCheckedChange={(checked) => {
+                        const newMotors = [...motorArray]
+                        newMotors[configDialogPort].enabled = checked
+                        setMotorArray(newMotors)
+                      }}
+                    />
+                  </div>
+
+                  {motor.enabled && (
+                    <>
+                      <div>
+                        <Label className="text-white">Motor Name</Label>
+                        <Input
+                          value={motor.name}
+                          onChange={(e) => {
+                            const newMotors = [...motorArray]
+                            newMotors[configDialogPort].name = e.target.value
+                            setMotorArray(newMotors)
+                          }}
+                          className="mt-1 bg-zinc-800 border-zinc-700 text-white"
+                          placeholder="e.g. motorFL"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <Label className="text-white">Reversed Direction</Label>
+                        <Switch
+                          checked={motor.reversed}
+                          onCheckedChange={(checked) => {
+                            const newMotors = [...motorArray]
+                            newMotors[configDialogPort].reversed = checked
+                            setMotorArray(newMotors)
+                          }}
+                        />
+                      </div>
+                    </>
+                  )}
+                </>
+              )
+            })()}
+
+            {/* Servo Configuration */}
+            {configDialogType === 'servo' && (() => {
+              const servoArray = configDialogHub === 'control' ? controlServos : expansionServos
+              const setServoArray = configDialogHub === 'control' ? setControlServos : setExpansionServos
+              const servo = servoArray[configDialogPort]
+
+              return (
+                <>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-white">Enable Servo</Label>
+                    <Switch
+                      checked={servo.enabled}
+                      onCheckedChange={(checked) => {
+                        const newServos = [...servoArray]
+                        newServos[configDialogPort].enabled = checked
+                        setServoArray(newServos)
+                      }}
+                    />
+                  </div>
+
+                  {servo.enabled && (
+                    <>
+                      <div>
+                        <Label className="text-white">Servo Name</Label>
+                        <Input
+                          value={servo.name}
+                          onChange={(e) => {
+                            const newServos = [...servoArray]
+                            newServos[configDialogPort].name = e.target.value
+                            setServoArray(newServos)
+                          }}
+                          className="mt-1 bg-zinc-800 border-zinc-700 text-white"
+                          placeholder="e.g. claw"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-white">Servo Type</Label>
+                        <Select
+                          value={servo.type}
+                          onValueChange={(v: 'standard' | 'continuous') => {
+                            const newServos = [...servoArray]
+                            newServos[configDialogPort].type = v
+                            setServoArray(newServos)
+                          }}
+                        >
+                          <SelectTrigger className="mt-1 bg-zinc-800 border-zinc-700 text-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="standard">Standard (180°)</SelectItem>
+                            <SelectItem value="continuous">Continuous Rotation</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
+                </>
+              )
+            })()}
+
+            {/* Add other device type configurations similarly... */}
+            {(configDialogType === 'i2c' || configDialogType === 'digital' || configDialogType === 'analog') && (
+              <div className="text-center text-zinc-500 py-4">
+                Configuration for {configDialogType} devices coming soon...
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={closeConfigDialog} className="bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700">
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
