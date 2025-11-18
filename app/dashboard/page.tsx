@@ -287,7 +287,7 @@ export default function DashboardPage() {
                   </CardContent>
                 </Card>
               </DialogTrigger>
-              <DialogContent className="bg-background/95 backdrop-blur-sm border-border/50 max-w-4xl max-h-[85vh] overflow-y-auto">
+              <DialogContent className="bg-background/95 backdrop-blur-sm border-border/50 max-w-7xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="text-xl font-bold">Create New Project</DialogTitle>
                   <DialogDescription>
