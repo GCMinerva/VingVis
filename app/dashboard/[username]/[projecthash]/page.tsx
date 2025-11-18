@@ -125,6 +125,7 @@ type Motor = {
   reversed: boolean
   hub: 'control' | 'expansion'
   enabled: boolean
+  encoderEnabled: boolean
 }
 
 type Servo = {
@@ -373,7 +374,8 @@ function CurvesEditorInner() {
       port: i,
       reversed: false,
       hub,
-      enabled: false
+      enabled: false,
+      encoderEnabled: false
     }))
 
   const initializeServoPorts = (hub: 'control' | 'expansion'): Servo[] =>
@@ -2875,7 +2877,10 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                           {motor.enabled && (
                             <div className="space-y-0.5">
                               <div className="text-[10px] text-blue-200 font-medium truncate">{motor.name}</div>
-                              {motor.reversed && <div className="text-[9px] text-orange-400">↻ Reversed</div>}
+                              <div className="flex gap-1.5">
+                                {motor.reversed && <div className="text-[9px] text-orange-400">↻ Reversed</div>}
+                                {motor.encoderEnabled && <div className="text-[9px] text-green-400">◉ Encoder</div>}
+                              </div>
                             </div>
                           )}
                           {!motor.enabled && (
@@ -4078,6 +4083,21 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                           onCheckedChange={(checked) => {
                             const newMotors = [...motorArray]
                             newMotors[configDialogPort].reversed = checked
+                            setMotorArray(newMotors)
+                          }}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-white">Motor Encoder</Label>
+                          <p className="text-xs text-zinc-400 mt-0.5">Enable position/velocity feedback</p>
+                        </div>
+                        <Switch
+                          checked={motor.encoderEnabled}
+                          onCheckedChange={(checked) => {
+                            const newMotors = [...motorArray]
+                            newMotors[configDialogPort].encoderEnabled = checked
                             setMotorArray(newMotors)
                           }}
                         />

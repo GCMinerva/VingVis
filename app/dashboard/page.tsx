@@ -11,14 +11,16 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { AlertCircle, Plus, Settings, Trash2, ExternalLink, LogOut } from "lucide-react"
+import { AlertCircle, Plus, Settings, Trash2, ExternalLink, LogOut, ArrowLeft } from "lucide-react"
 import Link from "next/link"
+import { DriveTrainSelector } from "@/components/drivetrain-selector"
+import { DriveTrainType, DRIVETRAIN_DEFINITIONS } from "@/lib/drivetrain-types"
 
 type Project = {
   id: string
   project_hash: string
   name: string
-  template_type: 'omni-wheel' | 'mecanum-wheel'
+  template_type: DriveTrainType
   created_at: string
   updated_at: string
 }
@@ -30,15 +32,18 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [createStep, setCreateStep] = useState<'drivetrain' | 'config'>('drivetrain')
   const [username, setUsername] = useState<string>("Guest")
   const [isGuest, setIsGuest] = useState(false)
   const [createFormData, setCreateFormData] = useState({
     name: "",
-    templateType: "omni-wheel" as 'omni-wheel' | 'mecanum-wheel',
+    templateType: "omni-wheel" as DriveTrainType,
     motorFL: "frontLeft",
     motorFR: "frontRight",
     motorBL: "backLeft",
     motorBR: "backRight",
+    motorCL: "centerStrafe",
+    motorCR: "",
   })
 
   useEffect(() => {
@@ -142,6 +147,7 @@ export default function DashboardPage() {
         setProjects(updatedProjects)
         saveGuestProjects(updatedProjects)
         setShowCreateDialog(false)
+        setCreateStep('drivetrain')
         setCreateFormData({
           name: "",
           templateType: "omni-wheel",
@@ -149,6 +155,8 @@ export default function DashboardPage() {
           motorFR: "frontRight",
           motorBL: "backLeft",
           motorBR: "backRight",
+          motorCL: "centerStrafe",
+          motorCR: "",
         })
 
         // Enable guest mode in session and navigate
@@ -160,11 +168,16 @@ export default function DashboardPage() {
       }
 
       // Authenticated mode - save to database
-      const motorConfig = {
+      const motorConfig: any = {
         fl: createFormData.motorFL,
         fr: createFormData.motorFR,
         bl: createFormData.motorBL,
         br: createFormData.motorBR,
+      }
+
+      // Add additional motors for H-Drive and Swerve
+      if (createFormData.templateType === 'h-drive') {
+        motorConfig.cl = createFormData.motorCL
       }
 
       const { error } = await supabase.from('projects').insert({
@@ -179,6 +192,7 @@ export default function DashboardPage() {
       if (error) throw error
 
       setShowCreateDialog(false)
+      setCreateStep('drivetrain')
       setCreateFormData({
         name: "",
         templateType: "omni-wheel",
@@ -186,6 +200,8 @@ export default function DashboardPage() {
         motorFR: "frontRight",
         motorBL: "backLeft",
         motorBR: "backRight",
+        motorCL: "centerStrafe",
+        motorCR: "",
       })
       loadProjects()
 
@@ -286,96 +302,166 @@ export default function DashboardPage() {
                   </CardContent>
                 </Card>
               </DialogTrigger>
-              <DialogContent className="bg-background/95 backdrop-blur-sm border-border/50 max-w-md">
+              <DialogContent className="bg-background/95 backdrop-blur-sm border-border/50 max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Create New Project</DialogTitle>
+                  <DialogTitle>
+                    {createStep === 'drivetrain' ? 'Choose Drive Train' : 'Configure Project'}
+                  </DialogTitle>
                   <DialogDescription>
-                    Choose a template and configure your robot's motor setup
+                    {createStep === 'drivetrain'
+                      ? 'Select a drive train type for your robot'
+                      : 'Name your project and configure motor settings'}
                   </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="projectName">Project Name</Label>
-                    <Input
-                      id="projectName"
-                      placeholder="My Awesome Robot"
-                      value={createFormData.name}
-                      onChange={(e) => setCreateFormData({ ...createFormData, name: e.target.value })}
-                      className="bg-background/50"
+
+                {createStep === 'drivetrain' ? (
+                  <div className="py-4">
+                    <DriveTrainSelector
+                      selectedType={createFormData.templateType}
+                      onSelect={(type) => setCreateFormData({ ...createFormData, templateType: type })}
                     />
                   </div>
+                ) : (
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="projectName">Project Name</Label>
+                      <Input
+                        id="projectName"
+                        placeholder="My Awesome Robot"
+                        value={createFormData.name}
+                        onChange={(e) => setCreateFormData({ ...createFormData, name: e.target.value })}
+                        className="bg-background/50"
+                      />
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="template">Robot Template</Label>
-                    <Select
-                      value={createFormData.templateType}
-                      onValueChange={(value: 'omni-wheel' | 'mecanum-wheel') =>
-                        setCreateFormData({ ...createFormData, templateType: value })
-                      }
-                    >
-                      <SelectTrigger className="bg-background/50">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="omni-wheel">4 Omni-Wheel Drive</SelectItem>
-                        <SelectItem value="mecanum-wheel">4 Mecanum-Wheel Drive</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                    <div className="space-y-2">
+                      <Label>Selected Drive Train</Label>
+                      <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                        <p className="font-semibold text-white">
+                          {DRIVETRAIN_DEFINITIONS[createFormData.templateType].name}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {DRIVETRAIN_DEFINITIONS[createFormData.templateType].description}
+                        </p>
+                      </div>
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label>Motor Configuration</Label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label htmlFor="motorFL" className="text-xs text-muted-foreground">Front Left</Label>
-                        <Input
-                          id="motorFL"
-                          placeholder="fl"
-                          value={createFormData.motorFL}
-                          onChange={(e) => setCreateFormData({ ...createFormData, motorFL: e.target.value })}
-                          className="bg-background/50 mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="motorFR" className="text-xs text-muted-foreground">Front Right</Label>
-                        <Input
-                          id="motorFR"
-                          placeholder="fr"
-                          value={createFormData.motorFR}
-                          onChange={(e) => setCreateFormData({ ...createFormData, motorFR: e.target.value })}
-                          className="bg-background/50 mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="motorBL" className="text-xs text-muted-foreground">Back Left</Label>
-                        <Input
-                          id="motorBL"
-                          placeholder="bl"
-                          value={createFormData.motorBL}
-                          onChange={(e) => setCreateFormData({ ...createFormData, motorBL: e.target.value })}
-                          className="bg-background/50 mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="motorBR" className="text-xs text-muted-foreground">Back Right</Label>
-                        <Input
-                          id="motorBR"
-                          placeholder="br"
-                          value={createFormData.motorBR}
-                          onChange={(e) => setCreateFormData({ ...createFormData, motorBR: e.target.value })}
-                          className="bg-background/50 mt-1"
-                        />
+                    <div className="space-y-2">
+                      <Label>Motor Configuration</Label>
+                      <div className="grid grid-cols-2 gap-3">
+                        {createFormData.templateType !== 'tank-drive' && (
+                          <>
+                            <div>
+                              <Label htmlFor="motorFL" className="text-xs text-muted-foreground">Front Left</Label>
+                              <Input
+                                id="motorFL"
+                                placeholder="frontLeft"
+                                value={createFormData.motorFL}
+                                onChange={(e) => setCreateFormData({ ...createFormData, motorFL: e.target.value })}
+                                className="bg-background/50 mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="motorFR" className="text-xs text-muted-foreground">Front Right</Label>
+                              <Input
+                                id="motorFR"
+                                placeholder="frontRight"
+                                value={createFormData.motorFR}
+                                onChange={(e) => setCreateFormData({ ...createFormData, motorFR: e.target.value })}
+                                className="bg-background/50 mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="motorBL" className="text-xs text-muted-foreground">Back Left</Label>
+                              <Input
+                                id="motorBL"
+                                placeholder="backLeft"
+                                value={createFormData.motorBL}
+                                onChange={(e) => setCreateFormData({ ...createFormData, motorBL: e.target.value })}
+                                className="bg-background/50 mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="motorBR" className="text-xs text-muted-foreground">Back Right</Label>
+                              <Input
+                                id="motorBR"
+                                placeholder="backRight"
+                                value={createFormData.motorBR}
+                                onChange={(e) => setCreateFormData({ ...createFormData, motorBR: e.target.value })}
+                                className="bg-background/50 mt-1"
+                              />
+                            </div>
+                          </>
+                        )}
+                        {createFormData.templateType === 'tank-drive' && (
+                          <>
+                            <div>
+                              <Label htmlFor="motorFL" className="text-xs text-muted-foreground">Left Motor</Label>
+                              <Input
+                                id="motorFL"
+                                placeholder="leftMotor"
+                                value={createFormData.motorFL}
+                                onChange={(e) => setCreateFormData({ ...createFormData, motorFL: e.target.value })}
+                                className="bg-background/50 mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="motorFR" className="text-xs text-muted-foreground">Right Motor</Label>
+                              <Input
+                                id="motorFR"
+                                placeholder="rightMotor"
+                                value={createFormData.motorFR}
+                                onChange={(e) => setCreateFormData({ ...createFormData, motorFR: e.target.value })}
+                                className="bg-background/50 mt-1"
+                              />
+                            </div>
+                          </>
+                        )}
+                        {createFormData.templateType === 'h-drive' && (
+                          <div className="col-span-2">
+                            <Label htmlFor="motorCL" className="text-xs text-muted-foreground">Center Strafe Wheel</Label>
+                            <Input
+                              id="motorCL"
+                              placeholder="centerStrafe"
+                              value={createFormData.motorCL}
+                              onChange={(e) => setCreateFormData({ ...createFormData, motorCL: e.target.value })}
+                              className="bg-background/50 mt-1"
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
+
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+                  {createStep === 'config' && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setCreateStep('drivetrain')}
+                    >
+                      <ArrowLeft className="h-4 w-4 mr-2" />
+                      Back
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowCreateDialog(false)
+                      setCreateStep('drivetrain')
+                    }}
+                  >
                     Cancel
                   </Button>
-                  <Button onClick={handleCreateProject} disabled={!createFormData.name}>
-                    Create Project
-                  </Button>
+                  {createStep === 'drivetrain' ? (
+                    <Button onClick={() => setCreateStep('config')}>
+                      Continue
+                    </Button>
+                  ) : (
+                    <Button onClick={handleCreateProject} disabled={!createFormData.name}>
+                      Create Project
+                    </Button>
+                  )}
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -390,7 +476,7 @@ export default function DashboardPage() {
                 <CardHeader>
                   <CardTitle className="text-lg">{project.name}</CardTitle>
                   <CardDescription>
-                    {project.template_type === 'omni-wheel' ? '4 Omni-Wheel Drive' : '4 Mecanum-Wheel Drive'}
+                    {DRIVETRAIN_DEFINITIONS[project.template_type]?.name || project.template_type}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex-1">

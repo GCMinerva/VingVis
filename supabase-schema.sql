@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS projects (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   project_hash TEXT UNIQUE NOT NULL,
   name TEXT NOT NULL,
-  template_type TEXT NOT NULL CHECK (template_type IN ('omni-wheel', 'mecanum-wheel')),
+  template_type TEXT NOT NULL CHECK (template_type IN ('tank-drive', 'omni-wheel', 'mecanum-wheel', 'x-drive', 'h-drive', 'swerve-drive')),
   motor_config JSONB DEFAULT '{}',
   workflow_data JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW(),
