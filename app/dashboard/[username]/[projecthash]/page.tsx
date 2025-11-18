@@ -3396,16 +3396,9 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Encoder ex
             return
           }
         }
-      } else if (!sourceHandle) {
-        // For regular blocks without specific handles, only allow one default connection
-        const existingDefaultConnection = edges.find(e =>
-          e.source === source && !e.sourceHandle
-        )
-        if (existingDefaultConnection) {
-          toast.error('This block already has a connection! Use a Parallel block to run multiple actions simultaneously.')
-          return
-        }
       }
+      // Removed restriction: Regular blocks can now have multiple outgoing connections
+      // The cycle detection (Validation 3) already prevents actual loops
 
       // Validation 5: Prevent duplicate paths with same action category (for parallel connections)
       const targetCategory = getBlockCategory(target!)
