@@ -833,8 +833,6 @@ function CurvesEditorInner() {
     if (params.projecthash) {
       if (user) {
         loadProject()
-      } else if (isGuest) {
-        loadGuestProject()
       } else if (!authLoading && typeof window !== 'undefined') {
         // Check sessionStorage directly to handle race condition
         const guestMode = sessionStorage.getItem('guestMode') === 'true'
@@ -846,7 +844,7 @@ function CurvesEditorInner() {
         }
       }
     }
-  }, [user, isGuest, params.projecthash, authLoading]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, params.projecthash, authLoading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const drawField = useCallback(() => {
     const canvas = canvasRef.current
@@ -1826,16 +1824,29 @@ function CurvesEditorInner() {
       if (isGuest) {
         // Save to localStorage (same as dashboard)
         const guestProjects = localStorage.getItem('guestProjects')
-        if (guestProjects) {
-          const projects = JSON.parse(guestProjects)
-          const updatedProjects = projects.map((p: any) => {
-            if (p.project_hash === project.id || p.project_hash === params.projecthash) {
-              return { ...p, workflow_data: { actions }, updated_at: new Date().toISOString() }
-            }
-            return p
+        let projects = guestProjects ? JSON.parse(guestProjects) : []
+
+        const projectIndex = projects.findIndex((p: any) =>
+          p.project_hash === project.id || p.project_hash === params.projecthash
+        )
+
+        if (projectIndex >= 0) {
+          // Update existing project
+          projects[projectIndex] = {
+            ...projects[projectIndex],
+            workflow_data: { actions },
+            updated_at: new Date().toISOString()
+          }
+        } else {
+          // Add new project if it doesn't exist
+          projects.push({
+            ...project,
+            workflow_data: { actions },
+            updated_at: new Date().toISOString()
           })
-          localStorage.setItem('guestProjects', JSON.stringify(updatedProjects))
         }
+
+        localStorage.setItem('guestProjects', JSON.stringify(projects))
       } else {
         const { error } = await supabase
           .from('projects')
@@ -1849,6 +1860,54 @@ function CurvesEditorInner() {
       setSaving(false)
     }
   }
+
+  // Auto-save functionality with debouncing
+  useEffect(() => {
+    if (!project || loading) return // Don't auto-save during initial loading
+
+    const autoSaveTimer = setTimeout(() => {
+      // Silently save without showing "Saving..." indicator
+      if (isGuest) {
+        try {
+          const guestProjects = localStorage.getItem('guestProjects')
+          let projects = guestProjects ? JSON.parse(guestProjects) : []
+
+          const projectIndex = projects.findIndex((p: any) =>
+            p.project_hash === project.id || p.project_hash === params.projecthash
+          )
+
+          if (projectIndex >= 0) {
+            projects[projectIndex] = {
+              ...projects[projectIndex],
+              workflow_data: { actions },
+              updated_at: new Date().toISOString()
+            }
+          } else {
+            projects.push({
+              ...project,
+              workflow_data: { actions },
+              updated_at: new Date().toISOString()
+            })
+          }
+
+          localStorage.setItem('guestProjects', JSON.stringify(projects))
+        } catch (err) {
+          console.error('Auto-save failed:', err)
+        }
+      } else {
+        // Auto-save for authenticated users
+        supabase
+          .from('projects')
+          .update({ workflow_data: { actions } })
+          .eq('id', project.id)
+          .then(({ error }) => {
+            if (error) console.error('Auto-save failed:', error)
+          })
+      }
+    }, 2000) // Auto-save 2 seconds after last change
+
+    return () => clearTimeout(autoSaveTimer)
+  }, [actions, project, isGuest, loading, params.projecthash]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Legacy action functions - kept for backward compatibility but not used with nodes
   const addAction = (blockType: any) => {
