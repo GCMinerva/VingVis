@@ -287,14 +287,14 @@ export default function DashboardPage() {
                   </CardContent>
                 </Card>
               </DialogTrigger>
-              <DialogContent className="bg-background/95 backdrop-blur-sm border-border/50 max-w-6xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="bg-background/95 backdrop-blur-sm border-border/50 max-w-4xl max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Create New Project</DialogTitle>
+                  <DialogTitle className="text-xl font-bold">Create New Project</DialogTitle>
                   <DialogDescription>
-                    Choose your drivetrain and configure your robot setup
+                    Choose your drivetrain type and give your project a name
                   </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
+                <div className="space-y-6 py-4">
                   <div className="space-y-2">
                     <Label htmlFor="projectName">Project Name</Label>
                     <Input
@@ -306,60 +306,17 @@ export default function DashboardPage() {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Choose Drivetrain</Label>
+                  <div className="space-y-3">
+                    <Label className="text-base font-semibold">Select Drivetrain Type</Label>
                     <DrivetrainSelector
                       selectedDrivetrain={createFormData.templateType}
                       onSelect={(drivetrain) =>
                         setCreateFormData({ ...createFormData, templateType: drivetrain })
                       }
                     />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Motor Configuration (Optional - can be configured later)</Label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label htmlFor="motorFL" className="text-xs text-muted-foreground">Front Left</Label>
-                        <Input
-                          id="motorFL"
-                          placeholder="fl"
-                          value={createFormData.motorFL}
-                          onChange={(e) => setCreateFormData({ ...createFormData, motorFL: e.target.value })}
-                          className="bg-background/50 mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="motorFR" className="text-xs text-muted-foreground">Front Right</Label>
-                        <Input
-                          id="motorFR"
-                          placeholder="fr"
-                          value={createFormData.motorFR}
-                          onChange={(e) => setCreateFormData({ ...createFormData, motorFR: e.target.value })}
-                          className="bg-background/50 mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="motorBL" className="text-xs text-muted-foreground">Back Left</Label>
-                        <Input
-                          id="motorBL"
-                          placeholder="bl"
-                          value={createFormData.motorBL}
-                          onChange={(e) => setCreateFormData({ ...createFormData, motorBL: e.target.value })}
-                          className="bg-background/50 mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="motorBR" className="text-xs text-muted-foreground">Back Right</Label>
-                        <Input
-                          id="motorBR"
-                          placeholder="br"
-                          value={createFormData.motorBR}
-                          onChange={(e) => setCreateFormData({ ...createFormData, motorBR: e.target.value })}
-                          className="bg-background/50 mt-1"
-                        />
-                      </div>
-                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Motor configuration can be set up later in the project editor
+                    </p>
                   </div>
                 </div>
                 <DialogFooter>
