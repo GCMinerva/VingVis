@@ -296,6 +296,18 @@ function CurvesEditorInner() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [showExportDialog, setShowExportDialog] = useState(false)
   const [selectedExportMode, setSelectedExportMode] = useState<'roadrunner' | 'pedropathing' | 'simple' | 'encoder'>('simple')
+  const [saveExportPreference, setSaveExportPreference] = useState(false)
+
+  // Load saved export preference on mount
+  useEffect(() => {
+    const savedMode = localStorage.getItem('vingvis-export-mode')
+    const savedPreference = localStorage.getItem('vingvis-save-export-preference')
+
+    if (savedMode && savedPreference === 'true') {
+      setSelectedExportMode(savedMode as 'roadrunner' | 'pedropathing' | 'simple' | 'encoder')
+      setSaveExportPreference(true)
+    }
+  }, [])
 
   // Sidebar drag and resize states
   const [sidebarWidth, setSidebarWidth] = useState(320)
@@ -2316,11 +2328,11 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}RR extends
     let code = `package org.firstinspires.ftc.teamcode;
 
 import com.pedropathing.follower.Follower;
-import com.pedropathing.pathgen.BezierLine;
-import com.pedropathing.pathgen.BezierCurve;
-import com.pedropathing.pathgen.Path;
-import com.pedropathing.pathgen.PathChain;
-import com.pedropathing.pathgen.Point;
+import com.pedropathing.geometry.BezierLine;
+import com.pedropathing.geometry.Pose;
+import com.pedropathing.paths.Path;
+import com.pedropathing.paths.PathChain;
+import com.pedropathing.util.Timer;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -2329,7 +2341,9 @@ import com.qualcomm.robotcore.hardware.Servo;
 @Autonomous(name = "${project?.name || 'Auto'} (PedroPathing)", group = "Auto")
 public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro extends OpMode {
     private Follower follower;
-    private PathChain path;
+    private PathChain pathChain;
+    private int pathState = 0;
+    private Timer timer = new Timer();
 `
 
     // Add hardware declarations based on blocks
@@ -2366,10 +2380,11 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
       code += `\n`
     }
 
-    // Build path
+    // Build path waypoints
     let currentX = robotX
     let currentY = robotY
-    let pathPoints: string[] = [`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`]
+    let currentHeading = robotHeading
+    let pathPoses: string[] = []
 
     orderedNodes.forEach(node => {
       const data = node.data
@@ -2378,74 +2393,109 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
       if (data.type === 'moveToPosition' || data.type === 'splineTo') {
         currentX = data.targetX || currentX
         currentY = data.targetY || currentY
-        pathPoints.push(`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`)
+        pathPoses.push(`new Pose(${currentX}, ${currentY}, Math.toRadians(${currentHeading}))`)
       } else if (data.type === 'forward') {
-        // Approximate forward movement (assuming 0 degree heading for simplicity)
-        currentY += (data.distance || 24)
-        pathPoints.push(`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`)
+        const distance = data.distance || 24
+        currentY += distance
+        pathPoses.push(`new Pose(${currentX}, ${currentY}, Math.toRadians(${currentHeading}))`)
       } else if (data.type === 'backward') {
-        currentY -= (data.distance || 24)
-        pathPoints.push(`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`)
+        const distance = data.distance || 24
+        currentY -= distance
+        pathPoses.push(`new Pose(${currentX}, ${currentY}, Math.toRadians(${currentHeading}))`)
       } else if (data.type === 'strafeLeft') {
-        currentX -= (data.distance || 24)
-        pathPoints.push(`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`)
+        const distance = data.distance || 24
+        currentX -= distance
+        pathPoses.push(`new Pose(${currentX}, ${currentY}, Math.toRadians(${currentHeading}))`)
       } else if (data.type === 'strafeRight') {
-        currentX += (data.distance || 24)
-        pathPoints.push(`new Point(${currentX}, ${currentY}, Point.CARTESIAN)`)
+        const distance = data.distance || 24
+        currentX += distance
+        pathPoses.push(`new Pose(${currentX}, ${currentY}, Math.toRadians(${currentHeading}))`)
+      } else if (data.type === 'turnLeft') {
+        const degrees = data.degrees || 90
+        currentHeading -= degrees
+        pathPoses.push(`new Pose(${currentX}, ${currentY}, Math.toRadians(${currentHeading}))`)
+      } else if (data.type === 'turnRight') {
+        const degrees = data.degrees || 90
+        currentHeading += degrees
+        pathPoses.push(`new Pose(${currentX}, ${currentY}, Math.toRadians(${currentHeading}))`)
       }
     })
 
-    // Only build path if there are points
-    if (pathPoints.length > 1) {
-      code += `        // Build path\n`
-      code += `        path = follower.pathBuilder()\n`
-      for (let i = 0; i < pathPoints.length - 1; i++) {
-        code += `            .addPath(new BezierLine(${pathPoints[i]}, ${pathPoints[i + 1]}))\n`
+    code += `        // Set start pose\n`
+    code += `        Pose startPose = new Pose(${robotX}, ${robotY}, Math.toRadians(${robotHeading}));\n`
+    code += `        follower.setStartingPose(startPose);\n\n`
+
+    // Build path if there are waypoints
+    if (pathPoses.length > 0) {
+      code += `        // Build autonomous path\n`
+      code += `        pathChain = follower.pathBuilder()\n`
+
+      const startPoseStr = `new Pose(${robotX}, ${robotY}, Math.toRadians(${robotHeading}))`
+      for (let i = 0; i < pathPoses.length; i++) {
+        const fromPose = i === 0 ? startPoseStr : pathPoses[i - 1]
+        code += `            .addPath(new BezierLine(${fromPose}, ${pathPoses[i]}))\n`
       }
-      code += `            .build();\n\n`
-      code += `        follower.followPath(path);\n`
+      code += `            .setLinearHeadingInterpolation(startPose.getHeading(), Math.toRadians(${currentHeading}))\n`
+      code += `            .build();\n`
     }
 
     code += `    }
 
     @Override
     public void start() {
-        super.start();
-        follower.startTeleopDrive();
+        super.start();`
+
+    if (pathPoses.length > 0) {
+      code += `\n        follower.followPath(pathChain);`
+    }
+
+    code += `\n        timer.resetTimer();
     }
 
     @Override
     public void loop() {
         follower.update();
+
+        // State machine for autonomous
+        switch (pathState) {
+            case 0: // Following path
+                if (!follower.isBusy()) {
+                    pathState = 1;
+                }
+                break;
+            case 1: // Path complete, execute mechanisms
 `
 
-    // Add mechanism control and other non-path blocks in the loop
-    orderedNodes.forEach(node => {
-      const data = node.data
+    // Add mechanism control in state 1
+    if (hasServoBlocks || hasMotorBlocks) {
+      orderedNodes.forEach(node => {
+        const data = node.data
 
-      if (data.type === 'setServo' && data.servoName) {
-        code += `\n        // Set servo position\n`
-        code += `        ${data.servoName}.setPosition(${data.position || 0.5});\n`
-      } else if (data.type === 'runMotor' && data.motorName) {
-        code += `\n        // Run motor\n`
-        code += `        ${data.motorName}.setPower(${data.power || 0.5});\n`
-      } else if (data.type === 'stopMotor' && data.motorName) {
-        code += `\n        // Stop motor\n`
-        code += `        ${data.motorName}.setPower(0);\n`
-      } else if (data.type === 'setMotorPower' && data.motorName) {
-        code += `\n        // Set motor power\n`
-        code += `        ${data.motorName}.setPower(${data.power || 0.5});\n`
-      } else if (data.type === 'custom' && data.customCode) {
-        code += `\n        // Custom code\n`
-        code += `        ${data.customCode}\n`
-      }
-    })
+        if (data.type === 'setServo' && data.servoName) {
+          code += `                ${data.servoName}.setPosition(${data.position || 0.5});\n`
+        } else if (data.type === 'runMotor' && data.motorName) {
+          code += `                ${data.motorName}.setPower(${data.power || 0.5});\n`
+        } else if (data.type === 'stopMotor' && data.motorName) {
+          code += `                ${data.motorName}.setPower(0);\n`
+        } else if (data.type === 'setMotorPower' && data.motorName) {
+          code += `                ${data.motorName}.setPower(${data.power || 0.5});\n`
+        } else if (data.type === 'custom' && data.customCode) {
+          code += `                ${data.customCode}\n`
+        }
+      })
+    }
 
-    code += `
+    code += `                pathState = 2;
+                break;
+            case 2: // Autonomous complete
+                break;
+        }
+
         // Telemetry
+        telemetry.addData("Path State", pathState);
         telemetry.addData("X", follower.getPose().getX());
         telemetry.addData("Y", follower.getPose().getY());
-        telemetry.addData("Heading", Math.toDegrees(follower.getPose().getHeading()));
+        telemetry.addData("Heading (deg)", Math.toDegrees(follower.getPose().getHeading()));
         telemetry.update();
     }
 }
@@ -2549,7 +2599,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Simple ext
 
     // Initialize drivetrain motors
     enabledDriveMotors.forEach(motor => {
-      code += `        ${motor.varName} = hardwareMap.get(DcMotor.class, "${motor.port}");\n`
+      code += `        ${motor.varName} = hardwareMap.get(DcMotor.class, "${motor.varName}");\n`
       if (motor.reversed) {
         code += `        ${motor.varName}.setDirection(DcMotor.Direction.REVERSE);\n`
       }
@@ -2562,8 +2612,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Simple ext
     if (allMechanismMotors.length > 0) {
       code += `        // Initialize mechanism motors\n`
       allMechanismMotors.forEach(motor => {
-        const hubPrefix = motor.hub === 'control' ? '' : 'Expansion Hub '
-        code += `        ${motor.name} = hardwareMap.get(DcMotor.class, "${hubPrefix}${motor.port}");\n`
+        code += `        ${motor.name} = hardwareMap.get(DcMotor.class, "${motor.name}");\n`
         if (motor.reversed) {
           code += `        ${motor.name}.setDirection(DcMotor.Direction.REVERSE);\n`
         }
@@ -2576,8 +2625,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Simple ext
     if (allServos.length > 0) {
       code += `        // Initialize servos\n`
       allServos.forEach(servo => {
-        const hubPrefix = servo.hub === 'control' ? '' : 'Expansion Hub '
-        code += `        ${servo.name} = hardwareMap.get(Servo.class, "${hubPrefix}${servo.port}");\n`
+        code += `        ${servo.name} = hardwareMap.get(Servo.class, "${servo.name}");\n`
       })
       code += `\n`
     }
@@ -2806,7 +2854,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Encoder ex
 
     // Initialize drivetrain motors with encoder setup
     enabledDriveMotors.forEach(motor => {
-      code += `        ${motor.varName} = hardwareMap.get(DcMotor.class, "${motor.port}");\n`
+      code += `        ${motor.varName} = hardwareMap.get(DcMotor.class, "${motor.varName}");\n`
       if (motor.reversed) {
         code += `        ${motor.varName}.setDirection(DcMotor.Direction.REVERSE);\n`
       }
@@ -2821,8 +2869,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Encoder ex
     if (allMechanismMotors.length > 0) {
       code += `        // Initialize mechanism motors\n`
       allMechanismMotors.forEach(motor => {
-        const hubPrefix = motor.hub === 'control' ? '' : 'Expansion Hub '
-        code += `        ${motor.name} = hardwareMap.get(DcMotor.class, "${hubPrefix}${motor.port}");\n`
+        code += `        ${motor.name} = hardwareMap.get(DcMotor.class, "${motor.name}");\n`
         if (motor.reversed) {
           code += `        ${motor.name}.setDirection(DcMotor.Direction.REVERSE);\n`
         }
@@ -2840,8 +2887,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Encoder ex
     if (allServos.length > 0) {
       code += `        // Initialize servos\n`
       allServos.forEach(servo => {
-        const hubPrefix = servo.hub === 'control' ? '' : 'Expansion Hub '
-        code += `        ${servo.name} = hardwareMap.get(Servo.class, "${hubPrefix}${servo.port}");\n`
+        code += `        ${servo.name} = hardwareMap.get(Servo.class, "${servo.name}");\n`
       })
       code += `\n`
     }
@@ -3041,6 +3087,15 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Encoder ex
 
   const handleExportConfirm = () => {
     setShowExportDialog(false)
+
+    // Save preference if checkbox is checked
+    if (saveExportPreference) {
+      localStorage.setItem('vingvis-export-mode', selectedExportMode)
+      localStorage.setItem('vingvis-save-export-preference', 'true')
+    } else {
+      localStorage.removeItem('vingvis-export-mode')
+      localStorage.removeItem('vingvis-save-export-preference')
+    }
 
     if (selectedExportMode === 'roadrunner') {
       exportRoadRunner()
@@ -5400,6 +5455,18 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Encoder ex
                   )}
                 </div>
               </button>
+            </div>
+
+            {/* Save preference checkbox */}
+            <div className="flex items-center space-x-2 pt-2 border-t border-zinc-800">
+              <Switch
+                id="save-export-preference"
+                checked={saveExportPreference}
+                onCheckedChange={setSaveExportPreference}
+              />
+              <Label htmlFor="save-export-preference" className="text-sm text-zinc-300 cursor-pointer">
+                Save for next export (auto-select this option)
+              </Label>
             </div>
           </div>
 
