@@ -1591,25 +1591,216 @@ function CurvesEditorInner() {
     stopAnimation()
   }
 
-  const exportRoadRunner = () => {
-    // Build ordered list of nodes by following edges from start
-    const orderedNodes: Node<BlockNodeData>[] = []
-    const visited = new Set<string>()
+  // Helper function to generate code for a sequence of nodes
+  const generateNodeCode = (nodeId: string, visitedInPath: Set<string>, indent: string = '            '): { code: string, hasTrajectoryCommands: boolean } => {
+    let code = ''
+    let hasTrajectoryCommands = false
 
-    const traverseNodes = (nodeId: string) => {
-      if (visited.has(nodeId)) return
-      visited.add(nodeId)
-
-      const node = nodes.find(n => n.id === nodeId)
-      if (node && node.type === 'blockNode') {
-        orderedNodes.push(node)
-      }
-
-      const outgoingEdges = edges.filter(e => e.source === nodeId)
-      outgoingEdges.forEach(edge => traverseNodes(edge.target))
+    // Prevent infinite loops
+    if (visitedInPath.has(nodeId)) {
+      return { code: `${indent}// Cycle detected, skipping\n`, hasTrajectoryCommands: false }
     }
 
-    traverseNodes('start')
+    const newVisited = new Set(visitedInPath)
+    newVisited.add(nodeId)
+
+    const node = nodes.find(n => n.id === nodeId)
+    if (!node || node.type !== 'blockNode') {
+      // Check if there's an edge from this node
+      const outgoingEdges = edges.filter(e => e.source === nodeId)
+      if (outgoingEdges.length > 0) {
+        const result = generateNodeCode(outgoingEdges[0].target, newVisited, indent)
+        return result
+      }
+      return { code, hasTrajectoryCommands }
+    }
+
+    const data = node.data
+
+    // Handle if/else blocks
+    if (data.type === 'if') {
+      const condition = data.condition || 'true'
+      const trueEdge = edges.find(e => e.source === node.id && e.sourceHandle === 'true')
+      const falseEdge = edges.find(e => e.source === node.id && e.sourceHandle === 'false')
+
+      code += `${indent}.addTemporalMarker(() -> {\n`
+      code += `${indent}    if (${condition}) {\n`
+
+      if (trueEdge) {
+        const trueResult = generateNodeCode(trueEdge.target, newVisited, indent + '        ')
+        code += trueResult.code
+        hasTrajectoryCommands = hasTrajectoryCommands || trueResult.hasTrajectoryCommands
+      } else {
+        code += `${indent}        // True branch\n`
+      }
+
+      code += `${indent}    }`
+
+      if (falseEdge) {
+        code += ` else {\n`
+        const falseResult = generateNodeCode(falseEdge.target, newVisited, indent + '        ')
+        code += falseResult.code
+        hasTrajectoryCommands = hasTrajectoryCommands || falseResult.hasTrajectoryCommands
+        code += `${indent}    }\n`
+      } else {
+        code += `\n`
+      }
+
+      code += `${indent}})\n`
+      hasTrajectoryCommands = true
+
+      // Continue with next node if any
+      const nextEdge = edges.find(e => e.source === node.id && !e.sourceHandle)
+      if (nextEdge) {
+        const nextResult = generateNodeCode(nextEdge.target, newVisited, indent)
+        code += nextResult.code
+        hasTrajectoryCommands = hasTrajectoryCommands || nextResult.hasTrajectoryCommands
+      }
+
+      return { code, hasTrajectoryCommands }
+    }
+
+    // Handle loop blocks
+    if (data.type === 'loop') {
+      const loopCount = data.loopCount || 1
+      const loopEdge = edges.find(e => e.source === node.id && e.sourceHandle === 'loop')
+
+      code += `${indent}.addTemporalMarker(() -> {\n`
+      code += `${indent}    for (int loopIndex = 0; loopIndex < ${loopCount}; loopIndex++) {\n`
+
+      if (loopEdge) {
+        const loopResult = generateNodeCode(loopEdge.target, newVisited, indent + '        ')
+        code += loopResult.code
+        hasTrajectoryCommands = hasTrajectoryCommands || loopResult.hasTrajectoryCommands
+      } else {
+        code += `${indent}        // Loop body\n`
+      }
+
+      code += `${indent}    }\n`
+      code += `${indent}})\n`
+      hasTrajectoryCommands = true
+
+      // Continue with next node after loop
+      const nextEdge = edges.find(e => e.source === node.id && e.sourceHandle === 'next')
+      if (nextEdge) {
+        const nextResult = generateNodeCode(nextEdge.target, newVisited, indent)
+        code += nextResult.code
+        hasTrajectoryCommands = hasTrajectoryCommands || nextResult.hasTrajectoryCommands
+      }
+
+      return { code, hasTrajectoryCommands }
+    }
+
+    // Handle everynode blocks
+    if (data.type === 'everynode') {
+      hasTrajectoryCommands = true
+      const iterVar = data.iteratorVariable || 'i'
+
+      if (data.collectionType === 'range') {
+        const start = data.startRange || 0
+        const end = data.endRange || 10
+        code += `${indent}.addTemporalMarker(() -> {\n`
+        code += `${indent}    for (int ${iterVar} = ${start}; ${iterVar} < ${end}; ${iterVar}++) {\n`
+        code += `${indent}        telemetry.addData("Iterator", ${iterVar});\n`
+        code += `${indent}        telemetry.update();\n`
+        code += `${indent}    }\n`
+        code += `${indent}})\n`
+      } else if (data.collectionType === 'array') {
+        const arrayName = data.collectionName || 'items'
+        code += `${indent}.addTemporalMarker(() -> {\n`
+        code += `${indent}    for (var ${iterVar} : ${arrayName}) {\n`
+        code += `${indent}        telemetry.addData("Current Item", ${iterVar});\n`
+        code += `${indent}        telemetry.update();\n`
+        code += `${indent}    }\n`
+        code += `${indent}})\n`
+      } else {
+        code += `${indent}.addTemporalMarker(() -> {\n`
+        code += `${indent}    telemetry.addData("Info", "Processing waypoints");\n`
+        code += `${indent}    telemetry.update();\n`
+        code += `${indent}})\n`
+      }
+    }
+    // Handle movement blocks
+    else if (data.type === 'moveToPosition') {
+      hasTrajectoryCommands = true
+      code += `${indent}.lineTo(new Vector2d(${data.targetX || 0}, ${data.targetY || 0}))\n`
+      if (data.targetHeading !== undefined) {
+        code += `${indent}.turn(Math.toRadians(${data.targetHeading}))\n`
+      }
+    } else if (data.type === 'splineTo') {
+      hasTrajectoryCommands = true
+      code += `${indent}.splineTo(new Vector2d(${data.targetX || 0}, ${data.targetY || 0}), Math.toRadians(${data.targetHeading || 0}))\n`
+    } else if (data.type === 'forward') {
+      hasTrajectoryCommands = true
+      code += `${indent}.forward(${data.distance || 24})\n`
+    } else if (data.type === 'backward') {
+      hasTrajectoryCommands = true
+      code += `${indent}.back(${data.distance || 24})\n`
+    } else if (data.type === 'strafeLeft') {
+      hasTrajectoryCommands = true
+      code += `${indent}.strafeLeft(${data.distance || 24})\n`
+    } else if (data.type === 'strafeRight') {
+      hasTrajectoryCommands = true
+      code += `${indent}.strafeRight(${data.distance || 24})\n`
+    } else if (data.type === 'turnLeft') {
+      hasTrajectoryCommands = true
+      code += `${indent}.turn(Math.toRadians(${-(data.angle || 90)}))\n`
+    } else if (data.type === 'turnRight') {
+      hasTrajectoryCommands = true
+      code += `${indent}.turn(Math.toRadians(${data.angle || 90}))\n`
+    } else if (data.type === 'turnToHeading') {
+      hasTrajectoryCommands = true
+      code += `${indent}.turn(Math.toRadians(${data.targetHeading || 0}))\n`
+    }
+    // Handle control blocks
+    else if (data.type === 'wait') {
+      hasTrajectoryCommands = true
+      code += `${indent}.waitSeconds(${data.duration || 1})\n`
+    }
+    // Handle mechanism blocks
+    else if (data.type === 'setServo') {
+      hasTrajectoryCommands = true
+      code += `${indent}.addTemporalMarker(() -> {\n`
+      code += `${indent}    Servo ${data.servoName || 'servo'} = hardwareMap.get(Servo.class, "${data.servoName || 'servo'}");\n`
+      code += `${indent}    ${data.servoName || 'servo'}.setPosition(${data.position || 0.5});\n`
+      code += `${indent}})\n`
+    } else if (data.type === 'runMotor') {
+      hasTrajectoryCommands = true
+      code += `${indent}.addTemporalMarker(() -> {\n`
+      code += `${indent}    DcMotor ${data.motorName || 'motor'} = hardwareMap.get(DcMotor.class, "${data.motorName || 'motor'}");\n`
+      code += `${indent}    ${data.motorName || 'motor'}.setPower(${data.power || 0.5});\n`
+      code += `${indent}})\n`
+    } else if (data.type === 'stopMotor') {
+      hasTrajectoryCommands = true
+      code += `${indent}.addTemporalMarker(() -> {\n`
+      code += `${indent}    DcMotor ${data.motorName || 'motor'} = hardwareMap.get(DcMotor.class, "${data.motorName || 'motor'}");\n`
+      code += `${indent}    ${data.motorName || 'motor'}.setPower(0);\n`
+      code += `${indent}})\n`
+    } else if (data.type === 'custom' && data.customCode) {
+      hasTrajectoryCommands = true
+      code += `${indent}.addTemporalMarker(() -> {\n`
+      code += `${indent}    ${data.customCode}\n`
+      code += `${indent}})\n`
+    }
+
+    // Continue to next node
+    const nextEdges = edges.filter(e => e.source === node.id && !e.sourceHandle)
+    if (nextEdges.length > 0) {
+      const nextResult = generateNodeCode(nextEdges[0].target, newVisited, indent)
+      code += nextResult.code
+      hasTrajectoryCommands = hasTrajectoryCommands || nextResult.hasTrajectoryCommands
+    }
+
+    return { code, hasTrajectoryCommands }
+  }
+
+  const exportRoadRunner = () => {
+    // Find start node
+    const startEdges = edges.filter(e => e.source === 'start')
+    if (startEdges.length === 0) {
+      alert('No nodes connected to START node')
+      return
+    }
 
     // Start building code
     let code = `package org.firstinspires.ftc.teamcode;
@@ -1641,127 +1832,10 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}RR extends
             TrajectorySequenceBuilder builder = drive.trajectorySequenceBuilder(startPose);
 `
 
-    // Generate code for each node
-    let hasTrajectoryCommands = false
-    orderedNodes.forEach(node => {
-      const data = node.data
-
-      // Movement blocks
-      if (data.type === 'moveToPosition') {
-        hasTrajectoryCommands = true
-        code += `
-            .lineTo(new Vector2d(${data.targetX || 0}, ${data.targetY || 0}))`
-        if (data.targetHeading !== undefined) {
-          code += `
-            .turn(Math.toRadians(${data.targetHeading}))`
-        }
-      } else if (data.type === 'splineTo') {
-        hasTrajectoryCommands = true
-        code += `
-            .splineTo(new Vector2d(${data.targetX || 0}, ${data.targetY || 0}), Math.toRadians(${data.targetHeading || 0}))`
-      } else if (data.type === 'forward') {
-        hasTrajectoryCommands = true
-        code += `
-            .forward(${data.distance || 24})`
-      } else if (data.type === 'backward') {
-        hasTrajectoryCommands = true
-        code += `
-            .back(${data.distance || 24})`
-      } else if (data.type === 'strafeLeft') {
-        hasTrajectoryCommands = true
-        code += `
-            .strafeLeft(${data.distance || 24})`
-      } else if (data.type === 'strafeRight') {
-        hasTrajectoryCommands = true
-        code += `
-            .strafeRight(${data.distance || 24})`
-      } else if (data.type === 'turnLeft') {
-        hasTrajectoryCommands = true
-        code += `
-            .turn(Math.toRadians(${-(data.angle || 90)}))`
-      } else if (data.type === 'turnRight') {
-        hasTrajectoryCommands = true
-        code += `
-            .turn(Math.toRadians(${data.angle || 90}))`
-      } else if (data.type === 'turnToHeading') {
-        hasTrajectoryCommands = true
-        code += `
-            .turn(Math.toRadians(${data.targetHeading || 0}))`
-      }
-      // Control blocks
-      else if (data.type === 'wait') {
-        hasTrajectoryCommands = true
-        code += `
-            .waitSeconds(${data.duration || 1})`
-      }
-      else if (data.type === 'everynode') {
-        hasTrajectoryCommands = true
-        const iterVar = data.iteratorVariable || 'i'
-
-        if (data.collectionType === 'range') {
-          const start = data.startRange || 0
-          const end = data.endRange || 10
-          code += `
-            .addTemporalMarker(() -> {
-                // For every node (range iteration)
-                for (int ${iterVar} = ${start}; ${iterVar} < ${end}; ${iterVar}++) {
-                    // Execute child nodes here
-                    telemetry.addData("Iterator", ${iterVar});
-                    telemetry.update();
-                }
-            })`
-        } else if (data.collectionType === 'array') {
-          const arrayName = data.collectionName || 'items'
-          code += `
-            .addTemporalMarker(() -> {
-                // For every node (array iteration)
-                for (var ${iterVar} : ${arrayName}) {
-                    // Execute child nodes here
-                    telemetry.addData("Current Item", ${iterVar});
-                    telemetry.update();
-                }
-            })`
-        } else {
-          // waypoints
-          code += `
-            .addTemporalMarker(() -> {
-                // For every waypoint
-                // Note: Implement waypoint iteration based on your trajectory
-                telemetry.addData("Info", "Processing waypoints");
-                telemetry.update();
-            })`
-        }
-      }
-      // Mechanism blocks (use addTemporalMarker)
-      else if (data.type === 'setServo') {
-        hasTrajectoryCommands = true
-        code += `
-            .addTemporalMarker(() -> {
-                Servo ${data.servoName || 'servo'} = hardwareMap.get(Servo.class, "${data.servoName || 'servo'}");
-                ${data.servoName || 'servo'}.setPosition(${data.position || 0.5});
-            })`
-      } else if (data.type === 'runMotor') {
-        hasTrajectoryCommands = true
-        code += `
-            .addTemporalMarker(() -> {
-                DcMotor ${data.motorName || 'motor'} = hardwareMap.get(DcMotor.class, "${data.motorName || 'motor'}");
-                ${data.motorName || 'motor'}.setPower(${data.power || 0.5});
-            })`
-      } else if (data.type === 'stopMotor') {
-        hasTrajectoryCommands = true
-        code += `
-            .addTemporalMarker(() -> {
-                DcMotor ${data.motorName || 'motor'} = hardwareMap.get(DcMotor.class, "${data.motorName || 'motor'}");
-                ${data.motorName || 'motor'}.setPower(0);
-            })`
-      } else if (data.type === 'custom' && data.customCode) {
-        hasTrajectoryCommands = true
-        code += `
-            .addTemporalMarker(() -> {
-                ${data.customCode}
-            })`
-      }
-    })
+    // Generate code using the new recursive system
+    const result = generateNodeCode(startEdges[0].target, new Set())
+    code += result.code
+    const hasTrajectoryCommands = result.hasTrajectoryCommands
 
     if (hasTrajectoryCommands) {
       code += `;
@@ -1983,9 +2057,28 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
   }
 
   // ReactFlow handlers
+  // Helper to detect cycles
+  const wouldCreateCycle = (sourceId: string, targetId: string, currentEdges: Edge[]): boolean => {
+    const visited = new Set<string>()
+
+    const dfs = (nodeId: string): boolean => {
+      if (nodeId === sourceId) return true
+      if (visited.has(nodeId)) return false
+      visited.add(nodeId)
+
+      const outgoing = currentEdges.filter(e => e.source === nodeId)
+      for (const edge of outgoing) {
+        if (dfs(edge.target)) return true
+      }
+      return false
+    }
+
+    return dfs(targetId)
+  }
+
   const onConnect = useCallback(
     (params: Connection | Edge) => {
-      const { source, target } = params
+      const { source, target, sourceHandle } = params
 
       // Validation 1: Prevent self-connections
       if (source === target) {
@@ -1993,13 +2086,43 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
         return
       }
 
-      // Validation 2: Prevent duplicate paths with same action category
+      // Validation 2: Prevent cycles (infinite loops in the graph)
+      if (wouldCreateCycle(source!, target!, edges)) {
+        alert('This connection would create a cycle! To create a loop, use the Loop block.')
+        return
+      }
+
+      // Validation 3: Ensure each handle can only have one connection
+      const sourceNode = nodes.find(n => n.id === source)
+      if (sourceNode && sourceNode.data.type === 'if' && sourceHandle) {
+        // Check if this handle already has a connection
+        const existingConnection = edges.find(e =>
+          e.source === source && e.sourceHandle === sourceHandle
+        )
+        if (existingConnection) {
+          alert(`The ${sourceHandle.toUpperCase()} branch already has a connection!`)
+          return
+        }
+      } else if (sourceNode && sourceNode.data.type === 'loop' && sourceHandle) {
+        // Check if this handle already has a connection
+        const existingConnection = edges.find(e =>
+          e.source === source && e.sourceHandle === sourceHandle
+        )
+        if (existingConnection) {
+          alert(`The ${sourceHandle.toUpperCase()} path already has a connection!`)
+          return
+        }
+      }
+
+      // Validation 4: Prevent duplicate paths with same action category (for non-control blocks)
       // Allow parallel operations (move + servo), but prevent duplicate operations (move + move)
       const targetCategory = getBlockCategory(target!)
 
-      if (targetCategory && targetCategory !== 'control') {
-        // Check all existing edges from this source
-        const existingEdgesFromSource = edges.filter(edge => edge.source === source)
+      if (targetCategory && targetCategory !== 'control' && !sourceHandle) {
+        // Check all existing edges from this source (without specific handles)
+        const existingEdgesFromSource = edges.filter(edge =>
+          edge.source === source && !edge.sourceHandle
+        )
 
         // Check if any existing edge connects to a node of the same category as the new target
         const hasSameCategoryConnection = existingEdgesFromSource.some(edge => {
@@ -3380,7 +3503,36 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                     )}
                   </div>
                 )}
-                {(selectedNode.data.type === 'waitUntil' || selectedNode.data.type === 'waitForSensor' || selectedNode.data.type === 'if') && (
+                {selectedNode.data.type === 'if' && (
+                  <div className="space-y-2">
+                    <div>
+                      <Label className="text-xs text-zinc-400">Condition</Label>
+                      <Input
+                        type="text"
+                        value={selectedNode.data.condition || ''}
+                        onChange={(e) => updateNodeData(selectedNode.id, { condition: e.target.value })}
+                        placeholder="e.g., sensorValue > 10"
+                        className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm font-mono"
+                      />
+                    </div>
+                    <div className="text-xs text-zinc-500 space-y-1">
+                      <div className="font-semibold text-zinc-400">Examples:</div>
+                      <div className="pl-2 space-y-0.5 font-mono">
+                        <div>• sensorValue {">"} 100</div>
+                        <div>• alliance == Alliance.RED</div>
+                        <div>• distance {"<"} 24 && distance {">"} 12</div>
+                        <div>• gamepad1.a</div>
+                      </div>
+                      <div className="mt-2 pt-2 border-t border-zinc-700">
+                        <div className="font-semibold text-zinc-400 mb-1">Branching:</div>
+                        <div className="text-zinc-500">
+                          Connect blocks to the <span className="text-green-400">TRUE</span> handle for actions when condition is met, and to the <span className="text-red-400">FALSE</span> handle for actions when it's not.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {(selectedNode.data.type === 'waitUntil' || selectedNode.data.type === 'waitForSensor') && (
                   <div>
                     <Label className="text-xs text-zinc-400">Condition</Label>
                     <Input
