@@ -134,6 +134,10 @@ export const BlockNode = memo(({ data, selected }: NodeProps<BlockNodeData>) => 
   const Icon = ICON_MAP[data.type] || Code
   const colors = getCategoryColor(data.type)
 
+  // Check if this is a control flow block that needs multiple handles
+  const isIfElse = data.type === 'if'
+  const isLoop = data.type === 'loop'
+
   const getNodeDetails = () => {
     if (data.type === 'moveToPosition' || data.type === 'splineTo') {
       return `(${data.targetX?.toFixed(1) || 0}, ${data.targetY?.toFixed(1) || 0}) @ ${data.targetHeading?.toFixed(0) || 0}°`
@@ -150,7 +154,7 @@ export const BlockNode = memo(({ data, selected }: NodeProps<BlockNodeData>) => 
     } else if (data.type.includes('Motor') || data.type.includes('motor')) {
       return `${data.motorName || 'motor'}: ${((data.power || 0.5) * 100).toFixed(0)}%`
     } else if (data.type === 'loop') {
-      return `${data.loopCount || 1}x`
+      return `Repeat ${data.loopCount || 1} times`
     } else if (data.type === 'everynode') {
       if (data.collectionType === 'range') {
         return `${data.iteratorVariable || 'i'}: ${data.startRange || 0} to ${data.endRange || 10}`
@@ -159,6 +163,8 @@ export const BlockNode = memo(({ data, selected }: NodeProps<BlockNodeData>) => 
       } else {
         return `for each waypoint`
       }
+    } else if (data.type === 'if' && data.condition) {
+      return `${data.condition}`
     } else if (data.condition) {
       return `if ${data.condition}`
     }
@@ -293,17 +299,148 @@ export const BlockNode = memo(({ data, selected }: NodeProps<BlockNodeData>) => 
         </div>
       )}
 
-      <Handle
-        type="source"
-        position={Position.Right}
-        style={{
-          background: colors.border,
-          width: '12px',
-          height: '12px',
-          border: '2px solid #18181b',
-          transition: 'all 0.2s ease',
-        }}
-      />
+      {/* Handles for if/else block */}
+      {isIfElse && (
+        <>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="true"
+            style={{
+              background: '#10b981',
+              width: '12px',
+              height: '12px',
+              border: '2px solid #18181b',
+              transition: 'all 0.2s ease',
+              top: '40%',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              right: '18px',
+              top: 'calc(40% - 8px)',
+              fontSize: '9px',
+              fontWeight: '600',
+              color: '#10b981',
+              background: 'rgba(0, 0, 0, 0.6)',
+              padding: '2px 4px',
+              borderRadius: '3px',
+              pointerEvents: 'none',
+            }}
+          >
+            TRUE
+          </div>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="false"
+            style={{
+              background: '#ef4444',
+              width: '12px',
+              height: '12px',
+              border: '2px solid #18181b',
+              transition: 'all 0.2s ease',
+              top: '60%',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              right: '18px',
+              top: 'calc(60% - 8px)',
+              fontSize: '9px',
+              fontWeight: '600',
+              color: '#ef4444',
+              background: 'rgba(0, 0, 0, 0.6)',
+              padding: '2px 4px',
+              borderRadius: '3px',
+              pointerEvents: 'none',
+            }}
+          >
+            FALSE
+          </div>
+        </>
+      )}
+
+      {/* Handles for loop block */}
+      {isLoop && (
+        <>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="loop"
+            style={{
+              background: '#8b5cf6',
+              width: '12px',
+              height: '12px',
+              border: '2px solid #18181b',
+              transition: 'all 0.2s ease',
+              top: '40%',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              right: '18px',
+              top: 'calc(40% - 8px)',
+              fontSize: '9px',
+              fontWeight: '600',
+              color: '#8b5cf6',
+              background: 'rgba(0, 0, 0, 0.6)',
+              padding: '2px 4px',
+              borderRadius: '3px',
+              pointerEvents: 'none',
+            }}
+          >
+            LOOP
+          </div>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="next"
+            style={{
+              background: colors.border,
+              width: '12px',
+              height: '12px',
+              border: '2px solid #18181b',
+              transition: 'all 0.2s ease',
+              top: '60%',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              right: '18px',
+              top: 'calc(60% - 8px)',
+              fontSize: '9px',
+              fontWeight: '600',
+              color: '#a3a3a3',
+              background: 'rgba(0, 0, 0, 0.6)',
+              padding: '2px 4px',
+              borderRadius: '3px',
+              pointerEvents: 'none',
+            }}
+          >
+            NEXT
+          </div>
+        </>
+      )}
+
+      {/* Default handle for other blocks */}
+      {!isIfElse && !isLoop && (
+        <Handle
+          type="source"
+          position={Position.Right}
+          style={{
+            background: colors.border,
+            width: '12px',
+            height: '12px',
+            border: '2px solid #18181b',
+            transition: 'all 0.2s ease',
+          }}
+        />
+      )}
     </div>
   )
 })
