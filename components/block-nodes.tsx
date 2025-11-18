@@ -56,6 +56,13 @@ export type BlockNodeData = {
   iteratorVariable?: string
   startRange?: number
   endRange?: number
+  // Combined/Parallel action params
+  enableSecondaryAction?: boolean
+  secondaryActionType?: 'servo' | 'motor' | 'sensor'
+  secondaryServoName?: string
+  secondaryServoPosition?: number
+  secondaryMotorName?: string
+  secondaryMotorPower?: number
 }
 
 const ICON_MAP: { [key: string]: any } = {
@@ -137,38 +144,59 @@ export const BlockNode = memo(({ data, selected }: NodeProps<BlockNodeData>) => 
   // Check if this is a control flow block that needs multiple handles
   const isIfElse = data.type === 'if'
   const isLoop = data.type === 'loop'
+  const isParallel = data.type === 'parallel'
 
   const getNodeDetails = () => {
+    let details = ''
+
     if (data.type === 'moveToPosition' || data.type === 'splineTo') {
-      return `(${data.targetX?.toFixed(1) || 0}, ${data.targetY?.toFixed(1) || 0}) @ ${data.targetHeading?.toFixed(0) || 0}°`
+      details = `(${data.targetX?.toFixed(1) || 0}, ${data.targetY?.toFixed(1) || 0}) @ ${data.targetHeading?.toFixed(0) || 0}°`
     } else if (data.type === 'turnToHeading') {
-      return `${data.targetHeading}°`
+      details = `${data.targetHeading}°`
     } else if (data.type.includes('move') || data.type.includes('strafe')) {
-      return `${data.distance || 24}" @ ${((data.power || 0.5) * 100).toFixed(0)}%`
+      details = `${data.distance || 24}" @ ${((data.power || 0.5) * 100).toFixed(0)}%`
     } else if (data.type.includes('turn')) {
-      return `${data.angle || 90}°`
+      details = `${data.angle || 90}°`
     } else if (data.type === 'wait') {
-      return `${data.duration || 1}s`
+      details = `${data.duration || 1}s`
     } else if (data.type.includes('servo')) {
-      return `${data.servoName || 'servo'}: ${((data.position || 0.5) * 100).toFixed(0)}%`
+      details = `${data.servoName || 'servo'}: ${((data.position || 0.5) * 100).toFixed(0)}%`
     } else if (data.type.includes('Motor') || data.type.includes('motor')) {
-      return `${data.motorName || 'motor'}: ${((data.power || 0.5) * 100).toFixed(0)}%`
+      details = `${data.motorName || 'motor'}: ${((data.power || 0.5) * 100).toFixed(0)}%`
     } else if (data.type === 'loop') {
-      return `Repeat ${data.loopCount || 1} times`
+      details = `Repeat ${data.loopCount || 1} times`
     } else if (data.type === 'everynode') {
       if (data.collectionType === 'range') {
-        return `${data.iteratorVariable || 'i'}: ${data.startRange || 0} to ${data.endRange || 10}`
+        details = `${data.iteratorVariable || 'i'}: ${data.startRange || 0} to ${data.endRange || 10}`
       } else if (data.collectionType === 'array') {
-        return `for ${data.iteratorVariable || 'item'} in ${data.collectionName || 'array'}`
+        details = `for ${data.iteratorVariable || 'item'} in ${data.collectionName || 'array'}`
       } else {
-        return `for each waypoint`
+        details = `for each waypoint`
       }
     } else if (data.type === 'if' && data.condition) {
-      return `${data.condition}`
+      details = `${data.condition}`
     } else if (data.condition) {
-      return `if ${data.condition}`
+      details = `if ${data.condition}`
+    } else if (data.type === 'parallel') {
+      details = `Run actions simultaneously`
     }
-    return ''
+
+    // Add combined action info for movement blocks
+    if (data.enableSecondaryAction && (data.type.includes('move') || data.type.includes('turn') || data.type.includes('strafe') || data.type === 'splineTo')) {
+      let secondaryInfo = ''
+      if (data.secondaryActionType === 'servo' && data.secondaryServoName) {
+        secondaryInfo = `+ ${data.secondaryServoName}: ${((data.secondaryServoPosition || 0.5) * 100).toFixed(0)}%`
+      } else if (data.secondaryActionType === 'motor' && data.secondaryMotorName) {
+        secondaryInfo = `+ ${data.secondaryMotorName}: ${((data.secondaryMotorPower || 0.5) * 100).toFixed(0)}%`
+      } else if (data.secondaryActionType === 'sensor') {
+        secondaryInfo = `+ read sensor`
+      }
+      if (secondaryInfo) {
+        details = details ? `${details}\n${secondaryInfo}` : secondaryInfo
+      }
+    }
+
+    return details
   }
 
   return (
@@ -427,8 +455,137 @@ export const BlockNode = memo(({ data, selected }: NodeProps<BlockNodeData>) => 
         </>
       )}
 
+      {/* Handles for parallel block - allows multiple connections */}
+      {isParallel && (
+        <>
+          {/* Movement/Action 1 */}
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="action1"
+            style={{
+              background: 'rgba(59, 130, 246, 0.8)',
+              width: '10px',
+              height: '10px',
+              border: '2px solid #18181b',
+              transition: 'all 0.2s ease',
+              top: '25%',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              right: '16px',
+              top: 'calc(25% - 8px)',
+              fontSize: '8px',
+              fontWeight: '600',
+              color: '#3b82f6',
+              background: 'rgba(0, 0, 0, 0.6)',
+              padding: '2px 4px',
+              borderRadius: '3px',
+              pointerEvents: 'none',
+            }}
+          >
+            1
+          </div>
+
+          {/* Mechanism/Action 2 */}
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="action2"
+            style={{
+              background: 'rgba(139, 92, 246, 0.8)',
+              width: '10px',
+              height: '10px',
+              border: '2px solid #18181b',
+              transition: 'all 0.2s ease',
+              top: '42%',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              right: '16px',
+              top: 'calc(42% - 8px)',
+              fontSize: '8px',
+              fontWeight: '600',
+              color: '#8b5cf6',
+              background: 'rgba(0, 0, 0, 0.6)',
+              padding: '2px 4px',
+              borderRadius: '3px',
+              pointerEvents: 'none',
+            }}
+          >
+            2
+          </div>
+
+          {/* Sensor/Action 3 */}
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="action3"
+            style={{
+              background: 'rgba(236, 72, 153, 0.8)',
+              width: '10px',
+              height: '10px',
+              border: '2px solid #18181b',
+              transition: 'all 0.2s ease',
+              top: '58%',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              right: '16px',
+              top: 'calc(58% - 8px)',
+              fontSize: '8px',
+              fontWeight: '600',
+              color: '#ec4899',
+              background: 'rgba(0, 0, 0, 0.6)',
+              padding: '2px 4px',
+              borderRadius: '3px',
+              pointerEvents: 'none',
+            }}
+          >
+            3
+          </div>
+
+          {/* Next/Continue */}
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="next"
+            style={{
+              background: colors.border,
+              width: '12px',
+              height: '12px',
+              border: '2px solid #18181b',
+              transition: 'all 0.2s ease',
+              top: '80%',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              right: '18px',
+              top: 'calc(80% - 8px)',
+              fontSize: '9px',
+              fontWeight: '600',
+              color: '#a3a3a3',
+              background: 'rgba(0, 0, 0, 0.6)',
+              padding: '2px 4px',
+              borderRadius: '3px',
+              pointerEvents: 'none',
+            }}
+          >
+            NEXT
+          </div>
+        </>
+      )}
+
       {/* Default handle for other blocks */}
-      {!isIfElse && !isLoop && (
+      {!isIfElse && !isLoop && !isParallel && (
         <Handle
           type="source"
           position={Position.Right}
