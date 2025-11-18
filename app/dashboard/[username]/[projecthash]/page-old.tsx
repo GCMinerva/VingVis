@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
 import { Navbar } from "@/components/navbar"
 import ReactFlow, {
   Node,
@@ -187,7 +188,7 @@ export default function ProjectEditorPage() {
             return p
           })
           localStorage.setItem('guestProjects', JSON.stringify(updatedProjects))
-          alert('Project saved successfully!')
+          toast.success('Project saved successfully!')
         }
       } else {
         const { error } = await supabase
@@ -201,10 +202,10 @@ export default function ProjectEditorPage() {
           .eq('id', project.id)
 
         if (error) throw error
-        alert('Project saved successfully!')
+        toast.success('Project saved successfully!')
       }
     } catch (err: any) {
-      alert('Failed to save project: ' + err.message)
+      toast.error('Failed to save project: ' + err.message)
     } finally {
       setSaving(false)
     }

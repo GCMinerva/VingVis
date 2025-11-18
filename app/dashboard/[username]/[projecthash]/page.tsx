@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef, DragEvent } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
 import { Navbar } from "@/components/navbar"
 import { MathTools } from "@/components/math-tools"
 import { Button } from "@/components/ui/button"
@@ -2225,7 +2226,7 @@ function CurvesEditorInner() {
     // Find start node
     const startEdges = edges.filter(e => e.source === 'start')
     if (startEdges.length === 0) {
-      alert('No nodes connected to START node')
+      toast.error('No nodes connected to START node')
       return
     }
 
@@ -2509,7 +2510,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
 
       // Validation 1: Prevent self-connections
       if (source === target) {
-        alert('A node cannot connect to itself!')
+        toast.error('A node cannot connect to itself!')
         return
       }
 
@@ -2520,13 +2521,13 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
         e.sourceHandle === sourceHandle
       )
       if (duplicateConnection) {
-        alert('These blocks are already connected!')
+        toast.error('These blocks are already connected!')
         return
       }
 
       // Validation 3: Prevent cycles (infinite loops in the graph)
       if (wouldCreateCycle(source!, target!, edges)) {
-        alert('This connection would create a cycle! To create a loop, use the Loop block.')
+        toast.error('This connection would create a cycle! To create a loop, use the Loop block.')
         return
       }
 
@@ -2538,7 +2539,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
           e.source === source && e.sourceHandle === sourceHandle
         )
         if (existingConnection) {
-          alert(`The ${sourceHandle.toUpperCase()} branch already has a connection!`)
+          toast.error(`The ${sourceHandle.toUpperCase()} branch already has a connection!`)
           return
         }
       } else if (sourceNode && sourceNode.data.type === 'loop' && sourceHandle) {
@@ -2547,7 +2548,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
           e.source === source && e.sourceHandle === sourceHandle
         )
         if (existingConnection) {
-          alert(`The ${sourceHandle.toUpperCase()} path already has a connection!`)
+          toast.error(`The ${sourceHandle.toUpperCase()} path already has a connection!`)
           return
         }
       } else if (sourceNode && sourceNode.data.type === 'parallel' && sourceHandle) {
@@ -2557,7 +2558,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
             e.source === source && e.sourceHandle === sourceHandle
           )
           if (existingConnection) {
-            alert(`Action ${sourceHandle.replace('action', '')} already has a connection!`)
+            toast.error(`Action ${sourceHandle.replace('action', '')} already has a connection!`)
             return
           }
         }
@@ -2567,7 +2568,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
           e.source === source && !e.sourceHandle
         )
         if (existingDefaultConnection) {
-          alert('This block already has a connection! Use a Parallel block to run multiple actions simultaneously.')
+          toast.error('This block already has a connection! Use a Parallel block to run multiple actions simultaneously.')
           return
         }
       }
@@ -2586,7 +2587,9 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
         })
 
         if (hasSameCategoryConnection) {
-          alert(`Cannot connect multiple ${targetCategory} blocks from the same Parallel block!\nEach branch should have different action types (e.g., movement + servo + sensor).`)
+          toast.error(`Cannot connect multiple ${targetCategory} blocks from the same Parallel block!`, {
+            description: 'Each branch should have different action types (e.g., movement + servo + sensor).'
+          })
           return
         }
       }
