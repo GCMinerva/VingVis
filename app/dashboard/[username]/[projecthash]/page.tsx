@@ -1834,6 +1834,62 @@ function CurvesEditorInner() {
     stopAnimation()
   }
 
+  // Helper function to generate combined action code (secondary actions with movement)
+  const generateCombinedAction = (data: BlockNodeData, indent: string): string => {
+    let code = ''
+
+    if (!data.enableSecondaryAction) return code
+
+    code += `${indent}.addTemporalMarker(() -> {\n`
+    code += `${indent}    // Combined action\n`
+
+    if (data.secondaryActionType === 'servo' && data.secondaryServoName) {
+      code += `${indent}    Servo ${data.secondaryServoName} = hardwareMap.get(Servo.class, "${data.secondaryServoName}");\n`
+      code += `${indent}    ${data.secondaryServoName}.setPosition(${data.secondaryServoPosition || 0.5});\n`
+    } else if (data.secondaryActionType === 'motor' && data.secondaryMotorName) {
+      code += `${indent}    DcMotor ${data.secondaryMotorName} = hardwareMap.get(DcMotor.class, "${data.secondaryMotorName}");\n`
+      code += `${indent}    ${data.secondaryMotorName}.setPower(${data.secondaryMotorPower || 0.5});\n`
+    } else if (data.secondaryActionType === 'sensor') {
+      code += `${indent}    telemetry.addData("Sensor", "Reading...");\n`
+      code += `${indent}    telemetry.update();\n`
+    }
+
+    code += `${indent}})\n`
+    return code
+  }
+
+  // Helper function to generate code for individual actions (used in parallel blocks and combined actions)
+  const generateActionCode = (data: BlockNodeData, indent: string): string => {
+    let code = ''
+
+    // Mechanism blocks
+    if (data.type === 'setServo') {
+      code += `${indent}Servo ${data.servoName || 'servo'} = hardwareMap.get(Servo.class, "${data.servoName || 'servo'}");\n`
+      code += `${indent}${data.servoName || 'servo'}.setPosition(${data.position || 0.5});\n`
+    } else if (data.type === 'runMotor') {
+      code += `${indent}DcMotor ${data.motorName || 'motor'} = hardwareMap.get(DcMotor.class, "${data.motorName || 'motor'}");\n`
+      code += `${indent}${data.motorName || 'motor'}.setPower(${data.power || 0.5});\n`
+    } else if (data.type === 'stopMotor') {
+      code += `${indent}DcMotor ${data.motorName || 'motor'} = hardwareMap.get(DcMotor.class, "${data.motorName || 'motor'}");\n`
+      code += `${indent}${data.motorName || 'motor'}.setPower(0);\n`
+    } else if (data.type === 'custom' && data.customCode) {
+      code += `${indent}${data.customCode}\n`
+    }
+    // Add sensor reads
+    else if (data.type === 'readIMU') {
+      code += `${indent}telemetry.addData("IMU", "Reading...");\n`
+      code += `${indent}telemetry.update();\n`
+    } else if (data.type === 'readDistance') {
+      code += `${indent}telemetry.addData("Distance", "Reading...");\n`
+      code += `${indent}telemetry.update();\n`
+    } else if (data.type === 'readColor') {
+      code += `${indent}telemetry.addData("Color", "Reading...");\n`
+      code += `${indent}telemetry.update();\n`
+    }
+
+    return code
+  }
+
   // Helper function to generate code for a sequence of nodes
   const generateNodeCode = (nodeId: string, visitedInPath: Set<string>, indent: string = '            '): { code: string, hasTrajectoryCommands: boolean } => {
     let code = ''
@@ -1934,6 +1990,57 @@ function CurvesEditorInner() {
       return { code, hasTrajectoryCommands }
     }
 
+    // Handle parallel blocks
+    if (data.type === 'parallel') {
+      const action1Edge = edges.find(e => e.source === node.id && e.sourceHandle === 'action1')
+      const action2Edge = edges.find(e => e.source === node.id && e.sourceHandle === 'action2')
+      const action3Edge = edges.find(e => e.source === node.id && e.sourceHandle === 'action3')
+
+      // Generate code for all parallel actions at the same trajectory point
+      const parallelActions: string[] = []
+
+      if (action1Edge) {
+        const action1Node = nodes.find(n => n.id === action1Edge.target)
+        if (action1Node?.data) {
+          parallelActions.push(generateActionCode(action1Node.data, indent + '    '))
+        }
+      }
+
+      if (action2Edge) {
+        const action2Node = nodes.find(n => n.id === action2Edge.target)
+        if (action2Node?.data) {
+          parallelActions.push(generateActionCode(action2Node.data, indent + '    '))
+        }
+      }
+
+      if (action3Edge) {
+        const action3Node = nodes.find(n => n.id === action3Edge.target)
+        if (action3Node?.data) {
+          parallelActions.push(generateActionCode(action3Node.data, indent + '    '))
+        }
+      }
+
+      if (parallelActions.length > 0) {
+        code += `${indent}.addTemporalMarker(() -> {\n`
+        code += `${indent}    // Parallel actions\n`
+        parallelActions.forEach(action => {
+          code += action
+        })
+        code += `${indent}})\n`
+        hasTrajectoryCommands = true
+      }
+
+      // Continue with next node
+      const nextEdge = edges.find(e => e.source === node.id && e.sourceHandle === 'next')
+      if (nextEdge) {
+        const nextResult = generateNodeCode(nextEdge.target, newVisited, indent)
+        code += nextResult.code
+        hasTrajectoryCommands = hasTrajectoryCommands || nextResult.hasTrajectoryCommands
+      }
+
+      return { code, hasTrajectoryCommands }
+    }
+
     // Handle everynode blocks
     if (data.type === 'everynode') {
       hasTrajectoryCommands = true
@@ -1970,30 +2077,66 @@ function CurvesEditorInner() {
       if (data.targetHeading !== undefined) {
         code += `${indent}.turn(Math.toRadians(${data.targetHeading}))\n`
       }
+      // Add combined action if enabled
+      if (data.enableSecondaryAction) {
+        code += generateCombinedAction(data, indent)
+      }
     } else if (data.type === 'splineTo') {
       hasTrajectoryCommands = true
       code += `${indent}.splineTo(new Vector2d(${data.targetX || 0}, ${data.targetY || 0}), Math.toRadians(${data.targetHeading || 0}))\n`
+      // Add combined action if enabled
+      if (data.enableSecondaryAction) {
+        code += generateCombinedAction(data, indent)
+      }
     } else if (data.type === 'forward') {
       hasTrajectoryCommands = true
       code += `${indent}.forward(${data.distance || 24})\n`
+      // Add combined action if enabled
+      if (data.enableSecondaryAction) {
+        code += generateCombinedAction(data, indent)
+      }
     } else if (data.type === 'backward') {
       hasTrajectoryCommands = true
       code += `${indent}.back(${data.distance || 24})\n`
+      // Add combined action if enabled
+      if (data.enableSecondaryAction) {
+        code += generateCombinedAction(data, indent)
+      }
     } else if (data.type === 'strafeLeft') {
       hasTrajectoryCommands = true
       code += `${indent}.strafeLeft(${data.distance || 24})\n`
+      // Add combined action if enabled
+      if (data.enableSecondaryAction) {
+        code += generateCombinedAction(data, indent)
+      }
     } else if (data.type === 'strafeRight') {
       hasTrajectoryCommands = true
       code += `${indent}.strafeRight(${data.distance || 24})\n`
+      // Add combined action if enabled
+      if (data.enableSecondaryAction) {
+        code += generateCombinedAction(data, indent)
+      }
     } else if (data.type === 'turnLeft') {
       hasTrajectoryCommands = true
       code += `${indent}.turn(Math.toRadians(${-(data.angle || 90)}))\n`
+      // Add combined action if enabled
+      if (data.enableSecondaryAction) {
+        code += generateCombinedAction(data, indent)
+      }
     } else if (data.type === 'turnRight') {
       hasTrajectoryCommands = true
       code += `${indent}.turn(Math.toRadians(${data.angle || 90}))\n`
+      // Add combined action if enabled
+      if (data.enableSecondaryAction) {
+        code += generateCombinedAction(data, indent)
+      }
     } else if (data.type === 'turnToHeading') {
       hasTrajectoryCommands = true
       code += `${indent}.turn(Math.toRadians(${data.targetHeading || 0}))\n`
+      // Add combined action if enabled
+      if (data.enableSecondaryAction) {
+        code += generateCombinedAction(data, indent)
+      }
     }
     // Handle control blocks
     else if (data.type === 'wait') {
@@ -2329,13 +2472,24 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
         return
       }
 
-      // Validation 2: Prevent cycles (infinite loops in the graph)
+      // Validation 2: Prevent duplicate connections between same nodes
+      const duplicateConnection = edges.find(e =>
+        e.source === source &&
+        e.target === target &&
+        e.sourceHandle === sourceHandle
+      )
+      if (duplicateConnection) {
+        alert('These blocks are already connected!')
+        return
+      }
+
+      // Validation 3: Prevent cycles (infinite loops in the graph)
       if (wouldCreateCycle(source!, target!, edges)) {
         alert('This connection would create a cycle! To create a loop, use the Loop block.')
         return
       }
 
-      // Validation 3: Ensure each handle can only have one connection
+      // Validation 4: Ensure each handle can only have one connection
       const sourceNode = nodes.find(n => n.id === source)
       if (sourceNode && sourceNode.data.type === 'if' && sourceHandle) {
         // Check if this handle already has a connection
@@ -2355,17 +2509,34 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
           alert(`The ${sourceHandle.toUpperCase()} path already has a connection!`)
           return
         }
+      } else if (sourceNode && sourceNode.data.type === 'parallel' && sourceHandle) {
+        // For parallel blocks, each action handle can only have one connection
+        if (sourceHandle !== 'next') {
+          const existingConnection = edges.find(e =>
+            e.source === source && e.sourceHandle === sourceHandle
+          )
+          if (existingConnection) {
+            alert(`Action ${sourceHandle.replace('action', '')} already has a connection!`)
+            return
+          }
+        }
+      } else if (!sourceHandle) {
+        // For regular blocks without specific handles, only allow one default connection
+        const existingDefaultConnection = edges.find(e =>
+          e.source === source && !e.sourceHandle
+        )
+        if (existingDefaultConnection) {
+          alert('This block already has a connection! Use a Parallel block to run multiple actions simultaneously.')
+          return
+        }
       }
 
-      // Validation 4: Prevent duplicate paths with same action category (for non-control blocks)
-      // Allow parallel operations (move + servo), but prevent duplicate operations (move + move)
+      // Validation 5: Prevent duplicate paths with same action category (for parallel connections)
       const targetCategory = getBlockCategory(target!)
 
-      if (targetCategory && targetCategory !== 'control' && !sourceHandle) {
-        // Check all existing edges from this source (without specific handles)
-        const existingEdgesFromSource = edges.filter(edge =>
-          edge.source === source && !edge.sourceHandle
-        )
+      if (sourceNode && sourceNode.data.type === 'parallel' && targetCategory) {
+        // Check all existing edges from this parallel block
+        const existingEdgesFromSource = edges.filter(edge => edge.source === source)
 
         // Check if any existing edge connects to a node of the same category as the new target
         const hasSameCategoryConnection = existingEdgesFromSource.some(edge => {
@@ -2374,7 +2545,7 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
         })
 
         if (hasSameCategoryConnection) {
-          alert(`Cannot connect multiple ${targetCategory} blocks from the same node!\nYou can run different types of actions in parallel (e.g., movement + servo), but not the same type.`)
+          alert(`Cannot connect multiple ${targetCategory} blocks from the same Parallel block!\nEach branch should have different action types (e.g., movement + servo + sensor).`)
           return
         }
       }
@@ -3590,6 +3761,118 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
                     />
                   </div>
                 )}
+
+                {/* Combined Action Section for Movement Blocks */}
+                {(selectedNode.data.type.includes('move') || selectedNode.data.type.includes('turn') || selectedNode.data.type.includes('strafe') || selectedNode.data.type === 'splineTo') && (
+                  <div className="border-t border-zinc-700 pt-3 mt-3">
+                    <div className="flex items-center gap-2 mb-3">
+                      <input
+                        type="checkbox"
+                        id="enableSecondary"
+                        checked={selectedNode.data.enableSecondaryAction || false}
+                        onChange={(e) => updateNodeData(selectedNode.id, { enableSecondaryAction: e.target.checked })}
+                        className="w-4 h-4 rounded bg-zinc-800 border-zinc-600"
+                      />
+                      <Label htmlFor="enableSecondary" className="text-xs text-zinc-400 cursor-pointer">
+                        Enable Combined Action
+                      </Label>
+                    </div>
+
+                    {selectedNode.data.enableSecondaryAction && (
+                      <div className="space-y-3 pl-6 border-l-2 border-emerald-500/30">
+                        <div>
+                          <Label className="text-xs text-zinc-400">Action Type</Label>
+                          <Select
+                            value={selectedNode.data.secondaryActionType || 'servo'}
+                            onValueChange={(value: 'servo' | 'motor' | 'sensor') =>
+                              updateNodeData(selectedNode.id, { secondaryActionType: value })
+                            }
+                          >
+                            <SelectTrigger className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="servo">Servo Control</SelectItem>
+                              <SelectItem value="motor">Motor Control</SelectItem>
+                              <SelectItem value="sensor">Sensor Read</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {selectedNode.data.secondaryActionType === 'servo' && (
+                          <>
+                            <div>
+                              <Label className="text-xs text-zinc-400">Servo</Label>
+                              <Select
+                                value={selectedNode.data.secondaryServoName || servos[0]?.name}
+                                onValueChange={(v) => updateNodeData(selectedNode.id, { secondaryServoName: v })}
+                              >
+                                <SelectTrigger className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {servos.map((servo) => (
+                                    <SelectItem key={servo.name} value={servo.name}>{servo.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-zinc-400">Position</Label>
+                              <Slider
+                                value={[selectedNode.data.secondaryServoPosition || 0.5]}
+                                onValueChange={([v]) => updateNodeData(selectedNode.id, { secondaryServoPosition: v })}
+                                max={1}
+                                step={0.01}
+                                className="mt-2"
+                              />
+                              <div className="text-xs text-zinc-500 mt-1">{((selectedNode.data.secondaryServoPosition || 0.5) * 100).toFixed(0)}%</div>
+                            </div>
+                          </>
+                        )}
+
+                        {selectedNode.data.secondaryActionType === 'motor' && (
+                          <>
+                            <div>
+                              <Label className="text-xs text-zinc-400">Motor</Label>
+                              <Select
+                                value={selectedNode.data.secondaryMotorName || motors[4]?.name}
+                                onValueChange={(v) => updateNodeData(selectedNode.id, { secondaryMotorName: v })}
+                              >
+                                <SelectTrigger className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {motors.slice(4).map((motor) => (
+                                    <SelectItem key={motor.name} value={motor.name}>{motor.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-zinc-400">Power</Label>
+                              <Slider
+                                value={[selectedNode.data.secondaryMotorPower || 0.5]}
+                                onValueChange={([v]) => updateNodeData(selectedNode.id, { secondaryMotorPower: v })}
+                                max={1}
+                                step={0.01}
+                                className="mt-2"
+                              />
+                              <div className="text-xs text-zinc-500 mt-1">{((selectedNode.data.secondaryMotorPower || 0.5) * 100).toFixed(0)}%</div>
+                            </div>
+                          </>
+                        )}
+
+                        {selectedNode.data.secondaryActionType === 'sensor' && (
+                          <div className="text-xs text-zinc-500 italic">
+                            Sensor reading will be performed during this movement
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {selectedNode.data.type === 'wait' && (
                   <div>
                     <Label className="text-xs text-zinc-400">Duration (seconds)</Label>
