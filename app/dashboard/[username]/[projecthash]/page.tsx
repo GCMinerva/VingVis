@@ -299,8 +299,14 @@ function CurvesEditorInner() {
   const [sidebarPosition, setSidebarPosition] = useState({ x: 0, y: 0 })
   const [isResizingSidebar, setIsResizingSidebar] = useState(false)
   const [isDraggingSidebar, setIsDraggingSidebar] = useState(false)
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [isSidebarFloating, setIsSidebarFloating] = useState(false)
+
+  // Refs for smooth dragging/resizing without causing re-renders
+  const sidebarRef = useRef<HTMLDivElement>(null)
+  const dragOffsetRef = useRef({ x: 0, y: 0 })
+  const animationFrameRef = useRef<number | null>(null)
+  const currentWidthRef = useRef(320)
+  const currentPositionRef = useRef({ x: 0, y: 0 })
 
   // Hardware configuration dialog states
   type ConfigDialogType = 'motor' | 'servo' | 'i2c' | 'digital' | 'analog' | null
@@ -439,45 +445,86 @@ function CurvesEditorInner() {
   const [servoPositions, setServoPositions] = useState<{[key: string]: number}>({})
   const [motorSpeeds, setMotorSpeeds] = useState<{[key: string]: number}>({})
 
-  // Sidebar resize handlers
+  // Sidebar resize handlers - optimized with RAF and refs
   const handleResizeStart = (e: React.MouseEvent) => {
     e.preventDefault()
+    e.stopPropagation()
     setIsResizingSidebar(true)
+    currentWidthRef.current = sidebarWidth
   }
 
   const handleResizeMove = useCallback((e: MouseEvent) => {
-    if (isResizingSidebar) {
-      const newWidth = Math.max(250, Math.min(600, e.clientX - (isSidebarFloating ? sidebarPosition.x : 0)))
-      setSidebarWidth(newWidth)
+    if (!isResizingSidebar || !sidebarRef.current) return
+
+    // Cancel any pending animation frame
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
     }
-  }, [isResizingSidebar, isSidebarFloating, sidebarPosition.x])
+
+    // Use RAF for smooth updates
+    animationFrameRef.current = requestAnimationFrame(() => {
+      const baseX = isSidebarFloating ? currentPositionRef.current.x : 0
+      const newWidth = Math.max(250, Math.min(600, e.clientX - baseX))
+      currentWidthRef.current = newWidth
+
+      // Update DOM directly for performance
+      if (sidebarRef.current) {
+        sidebarRef.current.style.width = `${newWidth}px`
+      }
+    })
+  }, [isResizingSidebar, isSidebarFloating])
 
   const handleResizeEnd = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+    }
     setIsResizingSidebar(false)
+    // Update state once at the end
+    setSidebarWidth(currentWidthRef.current)
   }, [])
 
-  // Sidebar drag handlers
+  // Sidebar drag handlers - optimized with RAF and refs
   const handleDragStart = (e: React.MouseEvent) => {
     e.preventDefault()
+    e.stopPropagation()
     setIsDraggingSidebar(true)
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    setDragOffset({
+    dragOffsetRef.current = {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top
-    })
+    }
+    currentPositionRef.current = sidebarPosition
   }
 
   const handleDragMove = useCallback((e: MouseEvent) => {
-    if (isDraggingSidebar) {
-      setSidebarPosition({
-        x: e.clientX - dragOffset.x,
-        y: e.clientY - dragOffset.y
-      })
+    if (!isDraggingSidebar || !sidebarRef.current) return
+
+    // Cancel any pending animation frame
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
     }
-  }, [isDraggingSidebar, dragOffset])
+
+    // Use RAF for smooth updates
+    animationFrameRef.current = requestAnimationFrame(() => {
+      const newX = e.clientX - dragOffsetRef.current.x
+      const newY = e.clientY - dragOffsetRef.current.y
+      currentPositionRef.current = { x: newX, y: newY }
+
+      // Update DOM directly for performance
+      if (sidebarRef.current) {
+        sidebarRef.current.style.left = `${newX}px`
+        sidebarRef.current.style.top = `${newY}px`
+      }
+    })
+  }, [isDraggingSidebar])
 
   const handleDragEnd = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+    }
     setIsDraggingSidebar(false)
+    // Update state once at the end
+    setSidebarPosition(currentPositionRef.current)
   }, [])
 
   // Add mouse move and up listeners
@@ -502,6 +549,36 @@ function CurvesEditorInner() {
       }
     }
   }, [isDraggingSidebar, handleDragMove, handleDragEnd])
+
+  // Sync refs with state
+  useEffect(() => {
+    currentWidthRef.current = sidebarWidth
+    currentPositionRef.current = sidebarPosition
+  }, [sidebarWidth, sidebarPosition])
+
+  // Cleanup animation frame on unmount
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+      }
+    }
+  }, [])
+
+  // Prevent text selection during drag/resize
+  useEffect(() => {
+    if (isDraggingSidebar || isResizingSidebar) {
+      document.body.style.userSelect = 'none'
+      document.body.style.cursor = isDraggingSidebar ? 'move' : 'col-resize'
+    } else {
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+    return () => {
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+  }, [isDraggingSidebar, isResizingSidebar])
 
   // Hardware configuration dialog helper
   const openConfigDialog = (type: ConfigDialogType, hub: 'control' | 'expansion', port: number) => {
@@ -2583,24 +2660,27 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Pedro exte
       <div className="flex-1 flex overflow-hidden relative">
         {/* Left: Blocks + Hardware */}
         <div
+          ref={sidebarRef}
           className={`${sidebarCollapsed ? 'w-12' : ''} ${
             isSidebarFloating ? 'absolute z-50 shadow-2xl' : 'relative'
-          } bg-zinc-900 border-r border-zinc-800 flex flex-col transition-all ${
-            isResizingSidebar || isDraggingSidebar ? '' : 'duration-300'
+          } bg-zinc-900 border-r border-zinc-800 flex flex-col ${
+            isResizingSidebar || isDraggingSidebar ? '' : 'transition-all duration-300'
           }`}
           style={{
             width: sidebarCollapsed ? undefined : `${sidebarWidth}px`,
             left: isSidebarFloating ? `${sidebarPosition.x}px` : undefined,
             top: isSidebarFloating ? `${sidebarPosition.y}px` : undefined,
             height: isSidebarFloating ? '80vh' : '100%',
+            willChange: isResizingSidebar || isDraggingSidebar ? 'transform, width' : undefined,
           }}
         >
           {/* Drag Handle Bar */}
           {!sidebarCollapsed && (
             <div
-              className="h-8 bg-zinc-800 border-b border-zinc-700 flex items-center justify-between px-2 cursor-move hover:bg-zinc-700 transition-colors"
+              className="h-8 bg-zinc-800 border-b border-zinc-700 flex items-center justify-between px-2 cursor-move hover:bg-zinc-700 transition-colors select-none"
               onMouseDown={handleDragStart}
               title="Drag to move sidebar"
+              style={{ userSelect: isDraggingSidebar ? 'none' : undefined }}
             >
               <div className="flex items-center gap-2">
                 <Move className="h-3.5 w-3.5 text-zinc-400" />
