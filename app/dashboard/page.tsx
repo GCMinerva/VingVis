@@ -62,16 +62,25 @@ export default function DashboardPage() {
 
   const loadUserProfile = async () => {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('username')
-        .eq('id', user!.id)
-        .single()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
 
-      if (error) throw error
-      setUsername(data.username)
+      const response = await fetch('/api/users/profile', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to load profile')
+      }
+
+      const data = await response.json()
+      setUsername(data.username || 'User')
     } catch (err: any) {
       console.error('Error loading profile:', err)
+      setUsername('User')
     }
   }
 
@@ -96,6 +105,25 @@ export default function DashboardPage() {
 
   const generateProjectHash = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+  }
+
+  const syncUserProfile = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return false
+
+      const response = await fetch('/api/users/sync', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
+
+      return response.ok
+    } catch (err) {
+      console.error('Error syncing user profile:', err)
+      return false
+    }
   }
 
   const handleCreateProject = async () => {
@@ -125,7 +153,29 @@ export default function DashboardPage() {
         workflow_data: {},
       })
 
-      if (error) throw error
+      // If foreign key error, try to sync user profile and retry
+      if (error && error.code === '23503') {
+        console.log('User profile missing, attempting to sync...')
+        const synced = await syncUserProfile()
+
+        if (synced) {
+          // Retry project creation
+          const { error: retryError } = await supabase.from('projects').insert({
+            user_id: user!.id,
+            project_hash: projectHash,
+            name: createFormData.name,
+            template_type: createFormData.templateType,
+            motor_config: motorConfig,
+            workflow_data: {},
+          })
+
+          if (retryError) throw retryError
+        } else {
+          throw new Error('Failed to sync user profile. Please try signing out and signing in again.')
+        }
+      } else if (error) {
+        throw error
+      }
 
       setShowCreateDialog(false)
       setCreateStep('drivetrain')

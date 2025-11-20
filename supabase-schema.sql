@@ -121,3 +121,28 @@ CREATE POLICY "Anyone can insert into waitlist"
 CREATE POLICY "Authenticated users can view waitlist"
   ON waitlist FOR SELECT
   USING (auth.role() = 'authenticated');
+
+-- Function to automatically create user profile when auth user is created
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.users (id, email, username, ftc_team_name, ftc_team_id)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'username', SPLIT_PART(NEW.email, '@', 1)),
+    NEW.raw_user_meta_data->>'ftc_team_name',
+    NEW.raw_user_meta_data->>'ftc_team_id'
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Drop existing trigger if it exists
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+
+-- Trigger to create user profile automatically
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
