@@ -809,13 +809,16 @@ function CurvesEditorInner() {
   }
 
   useEffect(() => {
+    // Determine guest mode from URL (reliable) or sessionStorage (fallback)
+    const isGuestProject = params.username === 'guest'
     if (typeof window !== 'undefined') {
-      // Using sessionStorage instead of localStorage for better security
-      const guestMode = sessionStorage.getItem('guestMode') === 'true'
-      setIsGuest(guestMode)
-      // Authentication disabled - allow access without login
+      // If URL indicates guest mode, set sessionStorage for consistency
+      if (isGuestProject) {
+        sessionStorage.setItem('guestMode', 'true')
+      }
+      setIsGuest(isGuestProject)
     }
-  }, [user, authLoading, router])
+  }, [params.username])
 
   // Load field image when selected field changes
   useEffect(() => {
@@ -1840,10 +1843,14 @@ function CurvesEditorInner() {
   }
 
   const handleSave = async () => {
-    if (!project) return
+    if (!project) {
+      console.warn('Cannot save: no project loaded')
+      return
+    }
     try {
       setSaving(true)
       if (isGuest) {
+        console.log('Saving guest project to localStorage:', params.projecthash)
         // Save to localStorage (same as dashboard)
         const guestProjects = localStorage.getItem('guestProjects')
         let projects = guestProjects ? JSON.parse(guestProjects) : []
@@ -1854,6 +1861,7 @@ function CurvesEditorInner() {
 
         if (projectIndex >= 0) {
           // Update existing project
+          console.log('Updating existing guest project at index', projectIndex)
           projects[projectIndex] = {
             ...projects[projectIndex],
             workflow_data: { actions },
@@ -1861,6 +1869,7 @@ function CurvesEditorInner() {
           }
         } else {
           // Add new project if it doesn't exist
+          console.log('Adding new guest project to localStorage')
           projects.push({
             ...project,
             workflow_data: { actions },
@@ -1869,12 +1878,15 @@ function CurvesEditorInner() {
         }
 
         localStorage.setItem('guestProjects', JSON.stringify(projects))
+        console.log('Guest project saved successfully')
       } else {
+        console.log('Saving authenticated project to Supabase:', project.id)
         const { error } = await supabase
           .from('projects')
           .update({ workflow_data: { actions } })
           .eq('id', project.id)
         if (error) throw error
+        console.log('Authenticated project saved successfully')
       }
     } catch (err: any) {
       console.error('Failed to save:', err)
@@ -1891,6 +1903,7 @@ function CurvesEditorInner() {
       // Silently save without showing "Saving..." indicator
       if (isGuest) {
         try {
+          console.log('Auto-saving guest project...')
           const guestProjects = localStorage.getItem('guestProjects')
           let projects = guestProjects ? JSON.parse(guestProjects) : []
 
@@ -1913,17 +1926,23 @@ function CurvesEditorInner() {
           }
 
           localStorage.setItem('guestProjects', JSON.stringify(projects))
+          console.log('Auto-save completed')
         } catch (err) {
           console.error('Auto-save failed:', err)
         }
       } else {
         // Auto-save for authenticated users
+        console.log('Auto-saving authenticated project...')
         supabase
           .from('projects')
           .update({ workflow_data: { actions } })
           .eq('id', project.id)
           .then(({ error }) => {
-            if (error) console.error('Auto-save failed:', error)
+            if (error) {
+              console.error('Auto-save failed:', error)
+            } else {
+              console.log('Auto-save completed')
+            }
           })
       }
     }, 2000) // Auto-save 2 seconds after last change
