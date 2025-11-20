@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import { rateLimit } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
@@ -31,7 +32,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create user' }, { status: 400 })
     }
 
-    // User profile is automatically created by database trigger
+    // Wait a moment for the database trigger to complete
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    // Verify user profile exists, if not create it manually
+    const { data: existingUser } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('id', authData.user.id)
+      .single()
+
+    if (!existingUser) {
+      console.log('Database trigger did not create user profile, creating manually...')
+      const { error: insertError } = await supabaseAdmin.from('users').insert({
+        id: authData.user.id,
+        email: authData.user.email!,
+        username: username || authData.user.email?.split('@')[0] || 'user',
+        ftc_team_name: ftcTeamName || null,
+        ftc_team_id: ftcTeamId || null,
+      })
+
+      if (insertError) {
+        console.error('Failed to create user profile:', insertError)
+      }
+    }
+
     return NextResponse.json({
       user: authData.user,
       session: authData.session

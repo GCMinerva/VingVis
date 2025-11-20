@@ -50,6 +50,33 @@ export async function POST(request: NextRequest) {
 
     const { name, templateType, motorConfig, projectHash } = await request.json()
 
+    // Ensure user profile exists before creating project
+    const { data: existingUser } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('id', user.id)
+      .single()
+
+    if (!existingUser) {
+      console.log('User profile not found, creating it...')
+      // Create user profile if it doesn't exist
+      const username = user.user_metadata?.username || user.email?.split('@')[0] || 'user'
+      const { error: userCreateError } = await supabaseAdmin.from('users').insert({
+        id: user.id,
+        email: user.email!,
+        username: username,
+        ftc_team_name: user.user_metadata?.ftc_team_name || null,
+        ftc_team_id: user.user_metadata?.ftc_team_id || null,
+      })
+
+      if (userCreateError) {
+        console.error('Failed to create user profile:', userCreateError)
+        return NextResponse.json({
+          error: 'User profile does not exist. Please sign out and sign in again.'
+        }, { status: 400 })
+      }
+    }
+
     // Use admin client to bypass RLS policies
     const { data, error } = await supabaseAdmin.from('projects').insert({
       user_id: user.id,

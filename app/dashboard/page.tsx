@@ -131,7 +131,7 @@ export default function DashboardPage() {
       setError(null)
       const projectHash = generateProjectHash()
 
-      // Save to database
+      // Prepare motor configuration
       const motorConfig: any = {
         fl: createFormData.motors.motorFL,
         fr: createFormData.motors.motorFR,
@@ -139,44 +139,39 @@ export default function DashboardPage() {
         br: createFormData.motors.motorBR,
       }
 
-      // Add additional motors for H-Drive and Swerve
+      // Add additional motors for H-Drive
       if (createFormData.templateType === 'h-drive') {
         motorConfig.cl = createFormData.motors.motorCL
       }
 
-      const { error } = await supabase.from('projects').insert({
-        user_id: user!.id,
-        project_hash: projectHash,
-        name: createFormData.name,
-        template_type: createFormData.templateType,
-        motor_config: motorConfig,
-        workflow_data: {},
-      })
-
-      // If foreign key error, try to sync user profile and retry
-      if (error && error.code === '23503') {
-        console.log('User profile missing, attempting to sync...')
-        const synced = await syncUserProfile()
-
-        if (synced) {
-          // Retry project creation
-          const { error: retryError } = await supabase.from('projects').insert({
-            user_id: user!.id,
-            project_hash: projectHash,
-            name: createFormData.name,
-            template_type: createFormData.templateType,
-            motor_config: motorConfig,
-            workflow_data: {},
-          })
-
-          if (retryError) throw retryError
-        } else {
-          throw new Error('Failed to sync user profile. Please try signing out and signing in again.')
-        }
-      } else if (error) {
-        throw error
+      // Get session token
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        throw new Error('Not authenticated')
       }
 
+      // Use API endpoint which handles user profile creation if needed
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: createFormData.name,
+          templateType: createFormData.templateType,
+          motorConfig: motorConfig,
+          projectHash: projectHash,
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create project')
+      }
+
+      // Reset form and navigate
       setShowCreateDialog(false)
       setCreateStep('drivetrain')
       setCreateFormData({
