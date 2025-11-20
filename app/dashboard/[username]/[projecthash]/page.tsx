@@ -831,20 +831,38 @@ function CurvesEditorInner() {
 
   useEffect(() => {
     if (params.projecthash) {
-      if (user) {
+      // Check if this is a guest project by looking at the URL (more reliable than sessionStorage)
+      const isGuestProject = params.username === 'guest'
+
+      if (user && !isGuestProject) {
+        // Authenticated user loading their own project
         loadProject()
-      } else if (!authLoading && typeof window !== 'undefined') {
-        // Check sessionStorage directly to handle race condition
-        const guestMode = sessionStorage.getItem('guestMode') === 'true'
-        if (guestMode) {
-          loadGuestProject()
-        } else {
-          // Not authenticated and not in guest mode, stop loading
-          setLoading(false)
+      } else if (!authLoading && isGuestProject) {
+        // Guest mode - load from localStorage
+        // Set sessionStorage for consistency with other parts of the app
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('guestMode', 'true')
         }
+        loadGuestProject()
+      } else if (!authLoading && !user && !isGuestProject) {
+        // Not authenticated, not a guest project - redirect to dashboard
+        console.log('Not authenticated and not a guest project, redirecting to dashboard')
+        router.push('/dashboard')
       }
     }
-  }, [user, params.projecthash, authLoading]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, params.projecthash, params.username, authLoading]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Safety timeout: if loading takes more than 10 seconds, redirect to dashboard
+  useEffect(() => {
+    if (loading && !authLoading) {
+      const timeout = setTimeout(() => {
+        console.error('Loading timeout - redirecting to dashboard')
+        router.push('/dashboard')
+      }, 10000) // 10 second timeout
+
+      return () => clearTimeout(timeout)
+    }
+  }, [loading, authLoading])
 
   const drawField = useCallback(() => {
     const canvas = canvasRef.current
@@ -1778,19 +1796,23 @@ function CurvesEditorInner() {
           if (foundProject.workflow_data?.actions) {
             setActions(foundProject.workflow_data.actions)
           }
+          setLoading(false)
         } else {
           // Project not found, redirect to dashboard
+          console.log('Guest project not found in localStorage, redirecting to dashboard')
+          setLoading(false)
           router.push('/dashboard')
         }
       } else {
         // No guest projects, redirect to dashboard
+        console.log('No guest projects in localStorage, redirecting to dashboard')
+        setLoading(false)
         router.push('/dashboard')
       }
     } catch (err: any) {
       console.error('Error loading guest project:', err)
-      router.push('/dashboard')
-    } finally {
       setLoading(false)
+      router.push('/dashboard')
     }
   }
 
