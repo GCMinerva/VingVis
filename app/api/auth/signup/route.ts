@@ -44,15 +44,32 @@ export async function POST(request: NextRequest) {
 
     if (!existingUser) {
       console.log('Database trigger did not create user profile, creating manually...')
-      const { error: insertError } = await supabaseAdmin.from('users').insert({
+      let finalUsername = username || authData.user.email?.split('@')[0] || 'user'
+
+      // Try to insert with the base username, if it fails due to unique constraint, add suffix
+      let { error: insertError } = await supabaseAdmin.from('users').insert({
         id: authData.user.id,
         email: authData.user.email!,
-        username: username || authData.user.email?.split('@')[0] || 'user',
+        username: finalUsername,
         ftc_team_name: ftcTeamName || null,
         ftc_team_id: ftcTeamId || null,
       })
 
-      if (insertError) {
+      // If username already exists, try with a unique suffix
+      if (insertError && insertError.code === '23505') {
+        finalUsername = `${finalUsername}_${authData.user.id.substring(0, 8)}`
+        const { error: retryError } = await supabaseAdmin.from('users').insert({
+          id: authData.user.id,
+          email: authData.user.email!,
+          username: finalUsername,
+          ftc_team_name: ftcTeamName || null,
+          ftc_team_id: ftcTeamId || null,
+        })
+
+        if (retryError) {
+          console.error('Failed to create user profile after retry:', retryError)
+        }
+      } else if (insertError) {
         console.error('Failed to create user profile:', insertError)
       }
     }

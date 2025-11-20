@@ -60,8 +60,10 @@ export async function POST(request: NextRequest) {
     if (!existingUser) {
       console.log('User profile not found, creating it...')
       // Create user profile if it doesn't exist
-      const username = user.user_metadata?.username || user.email?.split('@')[0] || 'user'
-      const { error: userCreateError } = await supabaseAdmin.from('users').insert({
+      let username = user.user_metadata?.username || user.email?.split('@')[0] || 'user'
+
+      // Try to insert with the base username, if it fails due to unique constraint, add suffix
+      let { error: userCreateError } = await supabaseAdmin.from('users').insert({
         id: user.id,
         email: user.email!,
         username: username,
@@ -69,10 +71,23 @@ export async function POST(request: NextRequest) {
         ftc_team_id: user.user_metadata?.ftc_team_id || null,
       })
 
+      // If username already exists, try with a unique suffix
+      if (userCreateError && userCreateError.code === '23505') {
+        username = `${username}_${user.id.substring(0, 8)}`
+        const { error: retryError } = await supabaseAdmin.from('users').insert({
+          id: user.id,
+          email: user.email!,
+          username: username,
+          ftc_team_name: user.user_metadata?.ftc_team_name || null,
+          ftc_team_id: user.user_metadata?.ftc_team_id || null,
+        })
+        userCreateError = retryError
+      }
+
       if (userCreateError) {
         console.error('Failed to create user profile:', userCreateError)
         return NextResponse.json({
-          error: 'User profile does not exist. Please sign out and sign in again.'
+          error: `Failed to create user profile: ${userCreateError.message}`
         }, { status: 400 })
       }
     }

@@ -30,14 +30,28 @@ export async function POST(request: NextRequest) {
 
       if (!existingUser) {
         console.log('User profile missing during signin, creating it...')
-        const username = data.user.user_metadata?.username || data.user.email?.split('@')[0] || 'user'
-        await supabaseAdmin.from('users').insert({
+        let username = data.user.user_metadata?.username || data.user.email?.split('@')[0] || 'user'
+
+        // Try to insert with the base username, if it fails due to unique constraint, add suffix
+        let { error: insertError } = await supabaseAdmin.from('users').insert({
           id: data.user.id,
           email: data.user.email!,
           username: username,
           ftc_team_name: data.user.user_metadata?.ftc_team_name || null,
           ftc_team_id: data.user.user_metadata?.ftc_team_id || null,
         })
+
+        // If username already exists, try with a unique suffix
+        if (insertError && insertError.code === '23505') {
+          username = `${username}_${data.user.id.substring(0, 8)}`
+          await supabaseAdmin.from('users').insert({
+            id: data.user.id,
+            email: data.user.email!,
+            username: username,
+            ftc_team_name: data.user.user_metadata?.ftc_team_name || null,
+            ftc_team_id: data.user.user_metadata?.ftc_team_id || null,
+          })
+        }
       }
     }
 
