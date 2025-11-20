@@ -183,7 +183,6 @@ const BLOCK_TYPES = {
     { id: 'turnLeft', label: 'Turn Left', icon: RotateCcw, description: 'Turn left by angle' },
     { id: 'turnRight', label: 'Turn Right', icon: RotateCw, description: 'Turn right by angle' },
     { id: 'turnToHeading', label: 'Turn to Heading', icon: Target, description: 'Turn to specific heading' },
-    { id: 'arcMove', label: 'Arc Movement', icon: Circle, description: 'Move in an arc' },
     { id: 'pivotTurn', label: 'Pivot Turn', icon: CircleDot, description: 'Turn around one wheel' },
     { id: 'followPath', label: 'Follow Path', icon: Waypoints, description: 'Follow complex path' },
   ],
@@ -5191,6 +5190,26 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Encoder ex
                         className="mt-2"
                       />
                       <div className="text-xs text-zinc-500 mt-1">{((selectedNode.data.power || 0.5) * 100).toFixed(0)}%</div>
+                    </div>
+                  </>
+                )}
+                {selectedNode.data.type === 'stopMotor' && (
+                  <>
+                    <div>
+                      <Label className="text-xs text-zinc-400">Select Motor(s) to Stop</Label>
+                      <Select
+                        value={selectedNode.data.motorName || motors[0]?.name}
+                        onValueChange={(v) => updateNodeData(selectedNode.id, { motorName: v })}
+                      >
+                        <SelectTrigger className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {motors.map((motor) => (
+                            <SelectItem key={motor.name} value={motor.name}>{motor.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </>
                 )}
