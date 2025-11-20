@@ -846,6 +846,170 @@ function CurvesEditorInner() {
     }
   }, [user, params.projecthash, authLoading]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Apply motor configuration from project to hardware ports
+  useEffect(() => {
+    if (!project || !project.motor_config) return
+
+    const motorConfig = project.motor_config
+
+    // Helper to update motors based on motor_config
+    const applyMotorConfig = () => {
+      // Map of motor config keys to their data
+      const configMap: { [key: string]: { name: string; port: number; hub: 'control' | 'expansion' } } = {
+        fl: motorConfig.fl,
+        fr: motorConfig.fr,
+        bl: motorConfig.bl,
+        br: motorConfig.br,
+        cl: motorConfig.cl,
+        cr: motorConfig.cr,
+      }
+
+      // Update control hub motors
+      setControlMotors(prevMotors => {
+        const updatedMotors = [...prevMotors]
+
+        // Apply FL motor (port 0)
+        if (configMap.fl && configMap.fl.hub === 'control') {
+          updatedMotors[configMap.fl.port] = {
+            ...updatedMotors[configMap.fl.port],
+            name: configMap.fl.name,
+            port: configMap.fl.port,
+            enabled: true,
+          }
+        }
+
+        // Apply FR motor (port 1)
+        if (configMap.fr && configMap.fr.hub === 'control') {
+          updatedMotors[configMap.fr.port] = {
+            ...updatedMotors[configMap.fr.port],
+            name: configMap.fr.name,
+            port: configMap.fr.port,
+            enabled: true,
+          }
+        }
+
+        // Apply BL motor (port 2)
+        if (configMap.bl && configMap.bl.hub === 'control') {
+          updatedMotors[configMap.bl.port] = {
+            ...updatedMotors[configMap.bl.port],
+            name: configMap.bl.name,
+            port: configMap.bl.port,
+            enabled: true,
+          }
+        }
+
+        // Apply BR motor (port 3)
+        if (configMap.br && configMap.br.hub === 'control') {
+          updatedMotors[configMap.br.port] = {
+            ...updatedMotors[configMap.br.port],
+            name: configMap.br.name,
+            port: configMap.br.port,
+            enabled: true,
+          }
+        }
+
+        // Apply CL motor (for H-Drive)
+        if (configMap.cl && configMap.cl.hub === 'control') {
+          updatedMotors[configMap.cl.port] = {
+            ...updatedMotors[configMap.cl.port],
+            name: configMap.cl.name,
+            port: configMap.cl.port,
+            enabled: true,
+          }
+        }
+
+        // Apply CR motor (for Swerve)
+        if (configMap.cr && configMap.cr.hub === 'control') {
+          updatedMotors[configMap.cr.port] = {
+            ...updatedMotors[configMap.cr.port],
+            name: configMap.cr.name,
+            port: configMap.cr.port,
+            enabled: true,
+          }
+        }
+
+        return updatedMotors
+      })
+
+      // Update expansion hub motors
+      setExpansionMotors(prevMotors => {
+        const updatedMotors = [...prevMotors]
+
+        // Apply FL motor
+        if (configMap.fl && configMap.fl.hub === 'expansion') {
+          updatedMotors[configMap.fl.port] = {
+            ...updatedMotors[configMap.fl.port],
+            name: configMap.fl.name,
+            port: configMap.fl.port,
+            enabled: true,
+          }
+        }
+
+        // Apply FR motor
+        if (configMap.fr && configMap.fr.hub === 'expansion') {
+          updatedMotors[configMap.fr.port] = {
+            ...updatedMotors[configMap.fr.port],
+            name: configMap.fr.name,
+            port: configMap.fr.port,
+            enabled: true,
+          }
+        }
+
+        // Apply BL motor
+        if (configMap.bl && configMap.bl.hub === 'expansion') {
+          updatedMotors[configMap.bl.port] = {
+            ...updatedMotors[configMap.bl.port],
+            name: configMap.bl.name,
+            port: configMap.bl.port,
+            enabled: true,
+          }
+        }
+
+        // Apply BR motor
+        if (configMap.br && configMap.br.hub === 'expansion') {
+          updatedMotors[configMap.br.port] = {
+            ...updatedMotors[configMap.br.port],
+            name: configMap.br.name,
+            port: configMap.br.port,
+            enabled: true,
+          }
+        }
+
+        // Apply CL motor (for H-Drive)
+        if (configMap.cl && configMap.cl.hub === 'expansion') {
+          updatedMotors[configMap.cl.port] = {
+            ...updatedMotors[configMap.cl.port],
+            name: configMap.cl.name,
+            port: configMap.cl.port,
+            enabled: true,
+          }
+        }
+
+        // Apply CR motor (for Swerve)
+        if (configMap.cr && configMap.cr.hub === 'expansion') {
+          updatedMotors[configMap.cr.port] = {
+            ...updatedMotors[configMap.cr.port],
+            name: configMap.cr.name,
+            port: configMap.cr.port,
+            enabled: true,
+          }
+        }
+
+        return updatedMotors
+      })
+
+      // Enable expansion hub if any motors are configured on it
+      const hasExpansion = Object.values(configMap).some(
+        (config) => config && config.hub === 'expansion'
+      )
+      if (hasExpansion) {
+        setHasExpansionHub(true)
+      }
+    }
+
+    applyMotorConfig()
+  }, [project])
+
   const drawField = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -4833,14 +4997,14 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Encoder ex
                             <div>
                               <Label className="text-xs text-zinc-400">Motor</Label>
                               <Select
-                                value={selectedNode.data.secondaryMotorName || motors[4]?.name}
+                                value={selectedNode.data.secondaryMotorName || motors[0]?.name}
                                 onValueChange={(v) => updateNodeData(selectedNode.id, { secondaryMotorName: v })}
                               >
                                 <SelectTrigger className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {motors.slice(4).map((motor) => (
+                                  {motors.map((motor) => (
                                     <SelectItem key={motor.name} value={motor.name}>{motor.name}</SelectItem>
                                   ))}
                                 </SelectContent>
@@ -4934,14 +5098,14 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Encoder ex
                     <div>
                       <Label className="text-xs text-zinc-400">Select Motor</Label>
                       <Select
-                        value={selectedNode.data.motorName || motors[4]?.name}
+                        value={selectedNode.data.motorName || motors[0]?.name}
                         onValueChange={(v) => updateNodeData(selectedNode.id, { motorName: v })}
                       >
                         <SelectTrigger className="mt-1 h-8 bg-zinc-800 border-zinc-700 text-sm">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {motors.slice(4).map((motor) => (
+                          {motors.map((motor) => (
                             <SelectItem key={motor.name} value={motor.name}>{motor.name}</SelectItem>
                           ))}
                         </SelectContent>
