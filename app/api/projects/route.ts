@@ -51,13 +51,14 @@ export async function POST(request: NextRequest) {
     const { name, templateType, motorConfig, projectHash } = await request.json()
 
     // Ensure user profile exists before creating project
-    const { data: existingUser } = await supabaseAdmin
+    const { data: existingUser, error: checkError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
 
-    if (!existingUser) {
+    // Only create user if they don't exist (not found or query error)
+    if (!existingUser && (!checkError || checkError.code === 'PGRST116')) {
       console.log('User profile not found, creating it...')
       // Create user profile if it doesn't exist
       let username = user.user_metadata?.username || user.email?.split('@')[0] || 'user'
@@ -71,25 +72,21 @@ export async function POST(request: NextRequest) {
         ftc_team_id: user.user_metadata?.ftc_team_id || null,
       })
 
-      // If username already exists, try with a unique suffix
+      // If username or email already exists, user profile exists - just continue
       if (userCreateError && userCreateError.code === '23505') {
-        username = `${username}_${user.id.substring(0, 8)}`
-        const { error: retryError } = await supabaseAdmin.from('users').insert({
-          id: user.id,
-          email: user.email!,
-          username: username,
-          ftc_team_name: user.user_metadata?.ftc_team_name || null,
-          ftc_team_id: user.user_metadata?.ftc_team_id || null,
-        })
-        userCreateError = retryError
-      }
-
-      if (userCreateError) {
+        console.log('User profile already exists (unique constraint), continuing...')
+        // Don't fail, just continue - the profile exists
+      } else if (userCreateError) {
         console.error('Failed to create user profile:', userCreateError)
         return NextResponse.json({
           error: `Failed to create user profile: ${userCreateError.message}`
         }, { status: 400 })
       }
+    } else if (checkError && checkError.code !== 'PGRST116') {
+      console.error('Error checking user profile:', checkError)
+      return NextResponse.json({
+        error: `Database error: ${checkError.message}`
+      }, { status: 500 })
     }
 
     // Use admin client to bypass RLS policies
