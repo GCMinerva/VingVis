@@ -51,6 +51,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!authLoading) {
       if (user) {
+        ensureUserProfile()
         loadProjects()
         loadUserProfile()
       } else {
@@ -59,6 +60,23 @@ export default function DashboardPage() {
       }
     }
   }, [user, authLoading])
+
+  const ensureUserProfile = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      // Call fix-profile endpoint to ensure user profile exists
+      await fetch('/api/users/fix-profile', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
+    } catch (err: any) {
+      console.error('Error ensuring user profile:', err)
+    }
+  }
 
   const loadUserProfile = async () => {
     try {
