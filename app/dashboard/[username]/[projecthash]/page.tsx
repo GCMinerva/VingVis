@@ -1799,6 +1799,12 @@ function CurvesEditorInner() {
           if (foundProject.workflow_data?.actions) {
             setActions(foundProject.workflow_data.actions)
           }
+          if (foundProject.workflow_data?.nodes) {
+            setNodes(foundProject.workflow_data.nodes)
+          }
+          if (foundProject.workflow_data?.edges) {
+            setEdges(foundProject.workflow_data.edges)
+          }
           setLoading(false)
         } else {
           // Project not found, redirect to dashboard
@@ -1834,6 +1840,12 @@ function CurvesEditorInner() {
       if (data.workflow_data?.actions) {
         setActions(data.workflow_data.actions)
       }
+      if (data.workflow_data?.nodes) {
+        setNodes(data.workflow_data.nodes)
+      }
+      if (data.workflow_data?.edges) {
+        setEdges(data.workflow_data.edges)
+      }
     } catch (err: any) {
       console.error('Error loading project:', err)
       router.push('/dashboard')
@@ -1845,10 +1857,13 @@ function CurvesEditorInner() {
   const handleSave = async () => {
     if (!project) {
       console.warn('Cannot save: no project loaded')
+      toast.error('Cannot save: no project loaded')
       return
     }
     try {
       setSaving(true)
+      toast.loading('Saving project...', { id: 'save-project' })
+
       if (isGuest) {
         console.log('Saving guest project to localStorage:', params.projecthash)
         // Save to localStorage (same as dashboard)
@@ -1864,7 +1879,7 @@ function CurvesEditorInner() {
           console.log('Updating existing guest project at index', projectIndex)
           projects[projectIndex] = {
             ...projects[projectIndex],
-            workflow_data: { actions },
+            workflow_data: { actions, nodes, edges },
             updated_at: new Date().toISOString()
           }
         } else {
@@ -1872,24 +1887,27 @@ function CurvesEditorInner() {
           console.log('Adding new guest project to localStorage')
           projects.push({
             ...project,
-            workflow_data: { actions },
+            workflow_data: { actions, nodes, edges },
             updated_at: new Date().toISOString()
           })
         }
 
         localStorage.setItem('guestProjects', JSON.stringify(projects))
         console.log('Guest project saved successfully')
+        toast.success('Project saved successfully!', { id: 'save-project' })
       } else {
         console.log('Saving authenticated project to Supabase:', project.id)
         const { error } = await supabase
           .from('projects')
-          .update({ workflow_data: { actions } })
+          .update({ workflow_data: { actions, nodes, edges } })
           .eq('id', project.id)
         if (error) throw error
         console.log('Authenticated project saved successfully')
+        toast.success('Project saved successfully!', { id: 'save-project' })
       }
     } catch (err: any) {
       console.error('Failed to save:', err)
+      toast.error('Failed to save project: ' + err.message, { id: 'save-project' })
     } finally {
       setSaving(false)
     }
@@ -1900,10 +1918,12 @@ function CurvesEditorInner() {
     if (!project || loading) return // Don't auto-save during initial loading
 
     const autoSaveTimer = setTimeout(() => {
-      // Silently save without showing "Saving..." indicator
+      // Auto-save with subtle notification
       if (isGuest) {
         try {
           console.log('Auto-saving guest project...')
+          toast.loading('Auto-saving...', { id: 'auto-save', duration: 1000 })
+
           const guestProjects = localStorage.getItem('guestProjects')
           let projects = guestProjects ? JSON.parse(guestProjects) : []
 
@@ -1914,41 +1934,47 @@ function CurvesEditorInner() {
           if (projectIndex >= 0) {
             projects[projectIndex] = {
               ...projects[projectIndex],
-              workflow_data: { actions },
+              workflow_data: { actions, nodes, edges },
               updated_at: new Date().toISOString()
             }
           } else {
             projects.push({
               ...project,
-              workflow_data: { actions },
+              workflow_data: { actions, nodes, edges },
               updated_at: new Date().toISOString()
             })
           }
 
           localStorage.setItem('guestProjects', JSON.stringify(projects))
           console.log('Auto-save completed')
+          toast.success('Auto-saved', { id: 'auto-save', duration: 1500 })
         } catch (err) {
           console.error('Auto-save failed:', err)
+          toast.error('Auto-save failed', { id: 'auto-save', duration: 2000 })
         }
       } else {
         // Auto-save for authenticated users
         console.log('Auto-saving authenticated project...')
+        toast.loading('Auto-saving...', { id: 'auto-save', duration: 1000 })
+
         supabase
           .from('projects')
-          .update({ workflow_data: { actions } })
+          .update({ workflow_data: { actions, nodes, edges } })
           .eq('id', project.id)
           .then(({ error }) => {
             if (error) {
               console.error('Auto-save failed:', error)
+              toast.error('Auto-save failed', { id: 'auto-save', duration: 2000 })
             } else {
               console.log('Auto-save completed')
+              toast.success('Auto-saved', { id: 'auto-save', duration: 1500 })
             }
           })
       }
     }, 2000) // Auto-save 2 seconds after last change
 
     return () => clearTimeout(autoSaveTimer)
-  }, [actions, project, isGuest, loading, params.projecthash]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [actions, nodes, edges, project, isGuest, loading, params.projecthash]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Legacy action functions - kept for backward compatibility but not used with nodes
   const addAction = (blockType: any) => {
