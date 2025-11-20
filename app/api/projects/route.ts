@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
         if (emailUser && emailUser.id !== user.id) {
           console.error('Email exists with different ID:', emailUser.id, 'vs', user.id)
           return NextResponse.json({
-            error: 'User profile mismatch. Your email is associated with a different account. Please contact support.'
+            error: 'User profile mismatch detected. Please refresh the page or sign out and sign in again to fix this issue automatically.'
           }, { status: 400 })
         }
 

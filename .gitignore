@@ -2,6 +2,11 @@
 
 # dependencies
 /node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
 
 # next.js
 /.next/
@@ -9,15 +14,22 @@
 
 # production
 /build
+/dist
 
 # debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+lerna-debug.log*
 
-# env files
-.env*
+# local env files
+.env
+.env*.local
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # vercel
 .vercel
@@ -26,5 +38,33 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude AI
 .claude/
 .claude\settings.local.json
+
+# Test files (optional - remove if you want to keep them in git)
+test-production.ps1
+automated-test.js
+test-production-api.js
+quick-test.html
+*.md.backup
+FIX-NOW.md
+INDEX.md
+IMPORTANT-READ-THIS.md
+START-HERE.md
+RUN-TEST-NOW.md
+PRODUCTION-TEST-SUMMARY.md
+TESTING-README.md
+TEST-PRODUCTION.md
+CURL-COMMANDS.md
