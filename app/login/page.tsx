@@ -7,8 +7,8 @@ export default function LoginPage() {
   const router = useRouter()
 
   useEffect(() => {
-    // Redirect to waitlist page
-    router.replace("/waitlist")
+    // Redirect to signin page
+    router.replace("/signin")
   }, [router])
 
   return (

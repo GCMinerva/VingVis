@@ -35,8 +35,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [createStep, setCreateStep] = useState<'drivetrain' | 'config'>('drivetrain')
-  const [username, setUsername] = useState<string>("Guest")
-  const [isGuest, setIsGuest] = useState(false)
+  const [username, setUsername] = useState<string>("User")
   const [createFormData, setCreateFormData] = useState({
     name: "",
     templateType: "omni-wheel" as DriveTrainType,
@@ -50,17 +49,13 @@ export default function DashboardPage() {
   })
 
   useEffect(() => {
-    // Enable guest mode if not authenticated
     if (!authLoading) {
       if (user) {
-        setIsGuest(false)
         loadProjects()
         loadUserProfile()
       } else {
-        // Guest mode
-        setIsGuest(true)
-        setUsername("Guest")
-        loadGuestProjects()
+        // Redirect to signin if not authenticated
+        router.push('/signin')
       }
     }
   }, [user, authLoading])
@@ -98,27 +93,6 @@ export default function DashboardPage() {
     }
   }
 
-  const loadGuestProjects = () => {
-    try {
-      setLoading(true)
-      if (typeof window !== 'undefined') {
-        const savedProjects = localStorage.getItem('guestProjects')
-        if (savedProjects) {
-          setProjects(JSON.parse(savedProjects))
-        }
-      }
-    } catch (err: any) {
-      console.error('Error loading guest projects:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const saveGuestProjects = (updatedProjects: Project[]) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('guestProjects', JSON.stringify(updatedProjects))
-    }
-  }
 
   const generateProjectHash = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
@@ -126,65 +100,10 @@ export default function DashboardPage() {
 
   const handleCreateProject = async () => {
     try {
-      const maxProjects = 3
-      if (projects.length >= maxProjects) {
-        setError("You can only create up to 3 projects")
-        return
-      }
-
       setError(null)
       const projectHash = generateProjectHash()
 
-      // Guest mode - save to localStorage
-      if (isGuest) {
-        const motorConfig: any = {
-          fl: createFormData.motors.motorFL,
-          fr: createFormData.motors.motorFR,
-          bl: createFormData.motors.motorBL,
-          br: createFormData.motors.motorBR,
-        }
-
-        // Add additional motors for H-Drive and Swerve
-        if (createFormData.templateType === 'h-drive') {
-          motorConfig.cl = createFormData.motors.motorCL
-        }
-
-        const newProject: Project = {
-          id: projectHash,
-          project_hash: projectHash,
-          name: createFormData.name || "Untitled Project",
-          template_type: createFormData.templateType,
-          motor_config: motorConfig,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-
-        const updatedProjects = [...projects, newProject]
-        setProjects(updatedProjects)
-        saveGuestProjects(updatedProjects)
-        setShowCreateDialog(false)
-        setCreateStep('drivetrain')
-        setCreateFormData({
-          name: "",
-          templateType: "omni-wheel",
-          motors: {
-            motorFL: { name: "frontLeft", port: 0, hub: "control" },
-            motorFR: { name: "frontRight", port: 1, hub: "control" },
-            motorBL: { name: "backLeft", port: 2, hub: "control" },
-            motorBR: { name: "backRight", port: 3, hub: "control" },
-            motorCL: { name: "centerStrafe", port: 0, hub: "expansion" },
-          }
-        })
-
-        // Enable guest mode in session and navigate
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('guestMode', 'true')
-        }
-        router.push(`/dashboard/guest/${projectHash}`)
-        return
-      }
-
-      // Authenticated mode - save to database
+      // Save to database
       const motorConfig: any = {
         fl: createFormData.motors.motorFL,
         fr: createFormData.motors.motorFR,
@@ -233,15 +152,7 @@ export default function DashboardPage() {
     if (!confirm("Are you sure you want to delete this project?")) return
 
     try {
-      if (isGuest) {
-        // Guest mode - remove from localStorage
-        const updatedProjects = projects.filter(p => p.id !== projectId)
-        setProjects(updatedProjects)
-        saveGuestProjects(updatedProjects)
-        return
-      }
-
-      // Authenticated mode - delete from database
+      // Delete from database
       const { error } = await supabase
         .from('projects')
         .delete()
@@ -271,8 +182,6 @@ export default function DashboardPage() {
     )
   }
 
-  const maxProjects = 3
-
   return (
     <div className="min-h-screen bg-black">
       <Navbar />
@@ -292,7 +201,7 @@ export default function DashboardPage() {
               My Projects
             </h1>
             <p className="text-muted-foreground mt-1">
-              Create up to 3 robot code projects
+              Create unlimited robot code projects
             </p>
           </div>
         </div>
@@ -307,15 +216,14 @@ export default function DashboardPage() {
         {/* Projects Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Create Project Card */}
-          {projects.length < maxProjects && (
-            <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
               <DialogTrigger asChild>
                 <Card className="border-dashed border-2 border-border/50 bg-background/50 hover:bg-background/80 transition-colors cursor-pointer h-[240px] flex items-center justify-center">
                   <CardContent className="flex flex-col items-center justify-center p-6">
                     <Plus className="h-12 w-12 text-muted-foreground mb-4" />
                     <p className="text-lg font-semibold text-white">Create New Project</p>
                     <p className="text-sm text-muted-foreground mt-2">
-                      {maxProjects - projects.length} slot{maxProjects - projects.length !== 1 ? 's' : ''} remaining
+                      Start building your robot code
                     </p>
                   </CardContent>
                 </Card>
@@ -757,7 +665,6 @@ export default function DashboardPage() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-          )}
 
           {/* Existing Projects */}
           {loading ? (
@@ -781,7 +688,7 @@ export default function DashboardPage() {
                     variant="default"
                     size="sm"
                     className="flex-1"
-                    onClick={() => router.push(`/dashboard/${isGuest ? 'guest' : username}/${project.project_hash}`)}
+                    onClick={() => router.push(`/dashboard/${username}/${project.project_hash}`)}
                   >
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Open

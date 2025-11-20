@@ -5,7 +5,6 @@ import Features from "@/components/features"
 import { TestimonialsSection } from "@/components/testimonials"
 import { NewReleasePromo } from "@/components/new-release-promo"
 import { FAQSection } from "@/components/faq-section"
-import { PricingSection } from "@/components/pricing-section"
 import { StickyFooter } from "@/components/sticky-footer"
 
 export default function Home() {
@@ -96,25 +95,6 @@ export default function Home() {
             }}
           >
             <span className="relative z-20">Features</span>
-          </a>
-          <a
-            className="relative px-4 py-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            onClick={(e) => {
-              e.preventDefault()
-              const element = document.getElementById("pricing")
-              if (element) {
-                const headerOffset = 120 // Account for sticky header height + margin
-                const elementPosition = element.getBoundingClientRect().top + window.pageYOffset
-                const offsetPosition = elementPosition - headerOffset
-
-                window.scrollTo({
-                  top: offsetPosition,
-                  behavior: "smooth",
-                })
-              }
-            }}
-          >
-            <span className="relative z-20">Pricing</span>
           </a>
           <a
             className="relative px-4 py-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
@@ -215,12 +195,6 @@ export default function Home() {
                 Features
               </button>
               <button
-                onClick={() => handleMobileNavClick("pricing")}
-                className="text-left px-4 py-3 text-lg font-medium text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-background/50"
-              >
-                Pricing
-              </button>
-              <button
                 onClick={() => handleMobileNavClick("testimonials")}
                 className="text-left px-4 py-3 text-lg font-medium text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-background/50"
               >
@@ -257,11 +231,6 @@ export default function Home() {
       {/* Features Section */}
       <div id="features">
         <Features />
-      </div>
-
-      {/* Pricing Section */}
-      <div id="pricing">
-        <PricingSection />
       </div>
 
       {/* Testimonials Section */}

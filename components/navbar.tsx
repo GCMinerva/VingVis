@@ -65,11 +65,18 @@ export function Navbar() {
                 </Button>
               </>
             ) : (
-              <Link href="/waitlist">
-                <Button variant="default" size="sm" className="bg-blue-600 hover:bg-blue-700">
-                  Join Waitlist
-                </Button>
-              </Link>
+              <>
+                <Link href="/signin">
+                  <Button variant="ghost" size="sm" className="text-zinc-300 hover:text-white hover:bg-zinc-800">
+                    Sign In
+                  </Button>
+                </Link>
+                <Link href="/signup">
+                  <Button variant="default" size="sm" className="bg-blue-600 hover:bg-blue-700">
+                    Sign Up
+                  </Button>
+                </Link>
+              </>
             )}
           </div>
 
@@ -124,11 +131,18 @@ export function Navbar() {
                 </Button>
               </>
             ) : (
-              <Link href="/waitlist" onClick={() => setMobileMenuOpen(false)}>
-                <Button variant="default" size="sm" className="w-full bg-blue-600 hover:bg-blue-700">
-                  Join Waitlist
-                </Button>
-              </Link>
+              <>
+                <Link href="/signin" onClick={() => setMobileMenuOpen(false)}>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-zinc-300 hover:text-white hover:bg-zinc-800">
+                    Sign In
+                  </Button>
+                </Link>
+                <Link href="/signup" onClick={() => setMobileMenuOpen(false)}>
+                  <Button variant="default" size="sm" className="w-full bg-blue-600 hover:bg-blue-700">
+                    Sign Up
+                  </Button>
+                </Link>
+              </>
             )}
           </div>
         </div>

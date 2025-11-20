@@ -50,16 +50,6 @@ export async function POST(request: NextRequest) {
 
     const { name, templateType, motorConfig, projectHash } = await request.json()
 
-    // Check project limit
-    const { count } = await supabase
-      .from('projects')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-
-    if (count && count >= 3) {
-      return NextResponse.json({ error: 'You can only create up to 3 projects' }, { status: 400 })
-    }
-
     // Use admin client to bypass RLS policies
     const { data, error } = await supabaseAdmin.from('projects').insert({
       user_id: user.id,
