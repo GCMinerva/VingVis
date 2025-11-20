@@ -22,6 +22,7 @@ type Project = {
   project_hash: string
   name: string
   template_type: DriveTrainType
+  motor_config?: any
   created_at: string
   updated_at: string
 }
@@ -136,11 +137,24 @@ export default function DashboardPage() {
 
       // Guest mode - save to localStorage
       if (isGuest) {
+        const motorConfig: any = {
+          fl: createFormData.motors.motorFL,
+          fr: createFormData.motors.motorFR,
+          bl: createFormData.motors.motorBL,
+          br: createFormData.motors.motorBR,
+        }
+
+        // Add additional motors for H-Drive and Swerve
+        if (createFormData.templateType === 'h-drive') {
+          motorConfig.cl = createFormData.motors.motorCL
+        }
+
         const newProject: Project = {
           id: projectHash,
           project_hash: projectHash,
           name: createFormData.name || "Untitled Project",
           template_type: createFormData.templateType,
+          motor_config: motorConfig,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }
