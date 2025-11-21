@@ -8,14 +8,12 @@ const navColumns = [
     title: "Product",
     links: [
       { label: "Features", href: "#features" },
-      { label: "Pricing", href: "#pricing" },
-      { label: "Testimonials", href: "#testimonials" },
+      { label: "FAQ", href: "#faq" },
     ],
   },
   {
     title: "Resources",
     links: [
-      { label: "Season Pass Kit", href: "/#pricing" },
       { label: "Robot Library", href: "/#features" },
       { label: "Release Notes", href: "/new-release" },
     ],
@@ -103,20 +101,14 @@ export function StickyFooter() {
                   transition={{ duration: 0.5, delay: 0.3 }}
                 >
                   <Link
-                    href="/waitlist"
+                    href="/signup"
                     className="inline-flex items-center rounded-full bg-[#e78a53] px-5 py-2 text-sm font-semibold text-black transition transform-gpu hover:-translate-y-0.5 hover:bg-[#f19f6e]"
                   >
-                    Join waitlist
-                  </Link>
-                  <Link
-                    href="#pricing"
-                    className="inline-flex items-center rounded-full border border-white/20 px-5 py-2 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/10"
-                  >
-                    View Season Pass
+                    Get Started
                   </Link>
                   <div className="flex items-center gap-3 text-xs text-zinc-400">
                     <span className="inline-flex h-2 w-2 rounded-full bg-[#e78a53]" />
-                    <span>Unlimited telemetry with Season Pass</span>
+                    <span>Deploy autonomous in under a minute</span>
                   </div>
                 </motion.div>
               </div>

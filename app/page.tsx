@@ -100,25 +100,6 @@ export default function Home() {
             className="relative px-4 py-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
             onClick={(e) => {
               e.preventDefault()
-              const element = document.getElementById("testimonials")
-              if (element) {
-                const headerOffset = 120 // Account for sticky header height + margin
-                const elementPosition = element.getBoundingClientRect().top + window.pageYOffset
-                const offsetPosition = elementPosition - headerOffset
-
-                window.scrollTo({
-                  top: offsetPosition,
-                  behavior: "smooth",
-                })
-              }
-            }}
-          >
-            <span className="relative z-20">Testimonials</span>
-          </a>
-          <a
-            className="relative px-4 py-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            onClick={(e) => {
-              e.preventDefault()
               const element = document.getElementById("faq")
               if (element) {
                 const headerOffset = 120 // Account for sticky header height + margin
@@ -193,12 +174,6 @@ export default function Home() {
                 className="text-left px-4 py-3 text-lg font-medium text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-background/50"
               >
                 Features
-              </button>
-              <button
-                onClick={() => handleMobileNavClick("testimonials")}
-                className="text-left px-4 py-3 text-lg font-medium text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-background/50"
-              >
-                Testimonials
               </button>
               <button
                 onClick={() => handleMobileNavClick("faq")}

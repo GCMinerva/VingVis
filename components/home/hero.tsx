@@ -128,10 +128,10 @@ export default function Hero() {
             className="mt-10 flex flex-col items-start gap-4 sm:flex-row sm:items-center"
           >
             <a
-              href="/waitlist"
+              href="/signup"
               className="inline-flex items-center rounded-full bg-[#e78a53] px-6 py-3 text-sm font-semibold text-black transition hover:-translate-y-0.5 hover:bg-[#f19f6e]"
             >
-              Join the waitlist
+              Get Started
             </a>
             <a
               href="#features"
