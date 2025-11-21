@@ -299,6 +299,15 @@ function CurvesEditorInner() {
   const [showExportDialog, setShowExportDialog] = useState(false)
   const [selectedExportMode, setSelectedExportMode] = useState<'roadrunner' | 'pedropathing' | 'simple' | 'encoder'>('simple')
   const [saveExportPreference, setSaveExportPreference] = useState(false)
+  const [useLocalStorage, setUseLocalStorage] = useState(false)
+
+  // Load saved storage preference on mount
+  useEffect(() => {
+    const savedStoragePref = localStorage.getItem('vingvis-use-local-storage')
+    if (savedStoragePref === 'true') {
+      setUseLocalStorage(true)
+    }
+  }, [])
 
   // Load saved export preference on mount
   useEffect(() => {
@@ -2027,7 +2036,7 @@ function CurvesEditorInner() {
       setSaving(true)
       toast.loading('Saving project...', { id: 'save-project' })
 
-      if (isGuest) {
+      if (isGuest || useLocalStorage) {
         console.log('Saving guest project to localStorage:', params.projecthash)
         // Save to localStorage (same as dashboard)
         const guestProjects = localStorage.getItem('guestProjects')
@@ -2082,7 +2091,7 @@ function CurvesEditorInner() {
 
     const autoSaveTimer = setTimeout(() => {
       // Auto-save with subtle notification
-      if (isGuest) {
+      if (isGuest || useLocalStorage) {
         try {
           console.log('Auto-saving guest project...')
           toast.loading('Auto-saving...', { id: 'auto-save', duration: 1000 })
@@ -3960,6 +3969,20 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Encoder ex
                   <Label className="text-xs text-zinc-400">Smooth Curves</Label>
                   <Switch checked={useCurves} onCheckedChange={setUseCurves} />
                 </div>
+
+                {!isGuest && (
+                  <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+                    <Label className="text-xs text-zinc-400">Save to Local Storage</Label>
+                    <Switch
+                      checked={useLocalStorage}
+                      onCheckedChange={(checked) => {
+                        setUseLocalStorage(checked)
+                        localStorage.setItem('vingvis-use-local-storage', checked.toString())
+                        toast.info(checked ? 'Now saving to local storage' : 'Now saving to cloud database')
+                      }}
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-1.5">
                   <Label className="text-xs text-zinc-400">Animation Speed</Label>

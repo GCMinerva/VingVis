@@ -318,14 +318,17 @@ function RobotChassis({ type, isAnimating }: { type: DriveTrainType; isAnimating
 export function DriveTrainSelector({ selectedType, onSelect }: DriveTrainSelectorProps) {
   const [hoveredType, setHoveredType] = useState<DriveTrainType | null>(null)
 
+  // Only show mecanum-wheel as working, others as "coming soon"
+  // Tank drive is hidden completely
   const driveTrainTypes: DriveTrainType[] = [
-    'tank-drive',
-    'omni-wheel',
     'mecanum-wheel',
+    'omni-wheel',
     'x-drive',
     'h-drive',
     'swerve-drive',
   ]
+
+  const isComingSoon = (type: DriveTrainType) => type !== 'mecanum-wheel'
 
   const getComplexityColor = (complexity: string) => {
     switch (complexity) {
@@ -354,23 +357,26 @@ export function DriveTrainSelector({ selectedType, onSelect }: DriveTrainSelecto
           const def = DRIVETRAIN_DEFINITIONS[type]
           const isSelected = selectedType === type
           const isHovered = hoveredType === type
+          const comingSoon = isComingSoon(type)
 
           return (
             <motion.div
               key={type}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onHoverStart={() => setHoveredType(type)}
+              whileHover={!comingSoon ? { scale: 1.02 } : {}}
+              whileTap={!comingSoon ? { scale: 0.98 } : {}}
+              onHoverStart={() => !comingSoon && setHoveredType(type)}
               onHoverEnd={() => setHoveredType(null)}
               className="w-full"
             >
               <Card
-                className={`cursor-pointer transition-all h-full min-h-[340px] md:min-h-[360px] ${
-                  isSelected
-                    ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20'
-                    : 'border-border/50 bg-background/50 hover:bg-background/80 hover:border-primary/30'
+                className={`transition-all h-full min-h-[340px] md:min-h-[360px] ${
+                  comingSoon
+                    ? 'cursor-not-allowed opacity-60 border-border/30 bg-background/30'
+                    : isSelected
+                    ? 'cursor-pointer border-primary bg-primary/10 shadow-lg shadow-primary/20'
+                    : 'cursor-pointer border-border/50 bg-background/50 hover:bg-background/80 hover:border-primary/30'
                 }`}
-                onClick={() => onSelect(type)}
+                onClick={() => !comingSoon && onSelect(type)}
               >
                 <CardHeader className="pb-2 px-3 md:px-6">
                   <div className="flex items-start justify-between">
@@ -378,6 +384,11 @@ export function DriveTrainSelector({ selectedType, onSelect }: DriveTrainSelecto
                       <CardTitle className="text-sm md:text-base flex items-center gap-2">
                         {def.name}
                         {isSelected && <Check className="h-4 w-4 text-primary flex-shrink-0" />}
+                        {comingSoon && (
+                          <Badge variant="outline" className="text-[9px] md:text-[10px] bg-orange-500/10 text-orange-500 border-orange-500/30">
+                            Coming Soon
+                          </Badge>
+                        )}
                       </CardTitle>
                       <div className="flex flex-wrap gap-1.5 mt-2">
                         <Badge variant="outline" className={`text-[10px] md:text-xs ${getComplexityColor(def.complexity)}`}>
