@@ -289,7 +289,7 @@ function CurvesEditorInner() {
   const [showGrid, setShowGrid] = useState(false)
   const [gridSize, setGridSize] = useState(24)
   const [protractorLockToRobot, setProtractorLockToRobot] = useState(false)
-  const [selectedField, setSelectedField] = useState<'intothedeep' | 'centerstage' | 'decode'>('intothedeep')
+  const [selectedField, setSelectedField] = useState<'intothedeep' | 'centerstage' | 'decode'>('decode')
   const [fieldImage, setFieldImage] = useState<HTMLImageElement | null>(null)
   const [activeTab, setActiveTab] = useState<'movement' | 'mechanisms' | 'sensors' | 'control'>('movement')
   const [pathMode, setPathMode] = useState<'roadrunner' | 'pedropathing' | 'simple'>('simple')
@@ -5442,8 +5442,8 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Encoder ex
             <div ref={fieldContainerRef} className={`aspect-square bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden relative ${isFullscreen ? 'w-screen h-screen !aspect-auto flex items-center justify-center bg-black' : ''}`}>
               <canvas
                 ref={canvasRef}
-                width={400}
-                height={400}
+                width={800}
+                height={800}
                 className={isFullscreen ? 'max-w-full max-h-full' : 'w-full h-full'}
                 style={{
                   cursor: isDrawingMode ? 'crosshair' :
