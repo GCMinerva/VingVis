@@ -164,6 +164,21 @@ type AnalogDevice = {
   enabled: boolean
 }
 
+type HardwareConfig = {
+  id: string
+  name: string
+  controlMotors: Motor[]
+  expansionMotors: Motor[]
+  controlServos: Servo[]
+  expansionServos: Servo[]
+  controlI2CDevices: I2CDevice[]
+  expansionI2CDevices: I2CDevice[]
+  controlDigitalDevices: DigitalDevice[]
+  expansionDigitalDevices: DigitalDevice[]
+  controlAnalogDevices: AnalogDevice[]
+  expansionAnalogDevices: AnalogDevice[]
+}
+
 // FTC Hardware Port Configuration
 // Control Hub and Expansion Hub each have:
 // - 4 Motor ports (0-3)
@@ -480,6 +495,79 @@ function CurvesEditorInner() {
   const [expansionAnalog, setExpansionAnalog] = useState<AnalogDevice[]>(initializeAnalogPorts('expansion'))
 
   const [hasExpansionHub, setHasExpansionHub] = useState(false)
+
+  // Hardware configuration management
+  const [hardwareConfigs, setHardwareConfigs] = useState<HardwareConfig[]>([])
+  const [selectedConfigId, setSelectedConfigId] = useState<string | null>(null)
+
+  // Hardware config helper functions
+  const saveCurrentConfigToSlot = (configId: string, configName: string) => {
+    const newConfig: HardwareConfig = {
+      id: configId,
+      name: configName,
+      controlMotors: [...controlMotors],
+      expansionMotors: [...expansionMotors],
+      controlServos: [...controlServos],
+      expansionServos: [...expansionServos],
+      controlI2CDevices: [...controlI2C],
+      expansionI2CDevices: [...expansionI2C],
+      controlDigitalDevices: [...controlDigital],
+      expansionDigitalDevices: [...expansionDigital],
+      controlAnalogDevices: [...controlAnalog],
+      expansionAnalogDevices: [...expansionAnalog],
+    }
+
+    setHardwareConfigs(prev => {
+      const existing = prev.find(c => c.id === configId)
+      if (existing) {
+        return prev.map(c => c.id === configId ? newConfig : c)
+      }
+      return [...prev, newConfig]
+    })
+
+    return newConfig
+  }
+
+  const loadConfigFromSlot = (configId: string) => {
+    const config = hardwareConfigs.find(c => c.id === configId)
+    if (!config) return
+
+    setControlMotors([...config.controlMotors])
+    setExpansionMotors([...config.expansionMotors])
+    setControlServos([...config.controlServos])
+    setExpansionServos([...config.expansionServos])
+    setControlI2C([...config.controlI2CDevices])
+    setExpansionI2C([...config.expansionI2CDevices])
+    setControlDigital([...config.controlDigitalDevices])
+    setExpansionDigital([...config.expansionDigitalDevices])
+    setControlAnalog([...config.controlAnalogDevices])
+    setExpansionAnalog([...config.expansionAnalogDevices])
+    setSelectedConfigId(configId)
+  }
+
+  const createNewConfig = (name: string) => {
+    const newId = `config-${Date.now()}`
+    const newConfig = saveCurrentConfigToSlot(newId, name)
+    setSelectedConfigId(newId)
+    return newConfig
+  }
+
+  const deleteConfig = (configId: string) => {
+    setHardwareConfigs(prev => prev.filter(c => c.id !== configId))
+    if (selectedConfigId === configId) {
+      const remaining = hardwareConfigs.filter(c => c.id !== configId)
+      setSelectedConfigId(remaining.length > 0 ? remaining[0].id : null)
+      if (remaining.length > 0) {
+        loadConfigFromSlot(remaining[0].id)
+      }
+    }
+  }
+
+  const renameConfig = (configId: string, newName: string) => {
+    setHardwareConfigs(prev =>
+      prev.map(c => c.id === configId ? { ...c, name: newName } : c)
+    )
+  }
 
   // Helper to get all enabled devices of a type
   const motors = [...controlMotors, ...(hasExpansionHub ? expansionMotors : [])].filter(m => m.enabled)
@@ -1038,6 +1126,26 @@ function CurvesEditorInner() {
 
     applyMotorConfig()
   }, [project])
+
+  // Load selected hardware config when it changes
+  useEffect(() => {
+    if (selectedConfigId && hardwareConfigs.length > 0) {
+      const config = hardwareConfigs.find(c => c.id === selectedConfigId)
+      if (config) {
+        // Silently load the config without calling loadConfigFromSlot to avoid state updates
+        setControlMotors([...config.controlMotors])
+        setExpansionMotors([...config.expansionMotors])
+        setControlServos([...config.controlServos])
+        setExpansionServos([...config.expansionServos])
+        setControlI2C([...config.controlI2CDevices])
+        setExpansionI2C([...config.expansionI2CDevices])
+        setControlDigital([...config.controlDigitalDevices])
+        setExpansionDigital([...config.expansionDigitalDevices])
+        setControlAnalog([...config.controlAnalogDevices])
+        setExpansionAnalog([...config.expansionAnalogDevices])
+      }
+    }
+  }, [selectedConfigId])
 
   const drawField = useCallback(() => {
     const canvas = canvasRef.current
@@ -1977,6 +2085,12 @@ function CurvesEditorInner() {
           if (foundProject.workflow_data?.edges) {
             setEdges(foundProject.workflow_data.edges)
           }
+          if (foundProject.workflow_data?.hardwareConfigs) {
+            setHardwareConfigs(foundProject.workflow_data.hardwareConfigs)
+          }
+          if (foundProject.workflow_data?.selectedConfigId) {
+            setSelectedConfigId(foundProject.workflow_data.selectedConfigId)
+          }
           setLoading(false)
         } else {
           // Project not found, redirect to dashboard
@@ -2018,6 +2132,12 @@ function CurvesEditorInner() {
       if (data.workflow_data?.edges) {
         setEdges(data.workflow_data.edges)
       }
+      if (data.workflow_data?.hardwareConfigs) {
+        setHardwareConfigs(data.workflow_data.hardwareConfigs)
+      }
+      if (data.workflow_data?.selectedConfigId) {
+        setSelectedConfigId(data.workflow_data.selectedConfigId)
+      }
     } catch (err: any) {
       console.error('Error loading project:', err)
       router.push('/dashboard')
@@ -2051,7 +2171,7 @@ function CurvesEditorInner() {
           console.log('Updating existing guest project at index', projectIndex)
           projects[projectIndex] = {
             ...projects[projectIndex],
-            workflow_data: { actions, nodes, edges },
+            workflow_data: { actions, nodes, edges, hardwareConfigs, selectedConfigId },
             updated_at: new Date().toISOString()
           }
         } else {
@@ -2059,7 +2179,7 @@ function CurvesEditorInner() {
           console.log('Adding new guest project to localStorage')
           projects.push({
             ...project,
-            workflow_data: { actions, nodes, edges },
+            workflow_data: { actions, nodes, edges, hardwareConfigs, selectedConfigId },
             updated_at: new Date().toISOString()
           })
         }
@@ -2071,7 +2191,7 @@ function CurvesEditorInner() {
         console.log('Saving authenticated project to Supabase:', project.id)
         const { error } = await supabase
           .from('projects')
-          .update({ workflow_data: { actions, nodes, edges } })
+          .update({ workflow_data: { actions, nodes, edges, hardwareConfigs, selectedConfigId } })
           .eq('id', project.id)
         if (error) throw error
         console.log('Authenticated project saved successfully')
@@ -2106,13 +2226,13 @@ function CurvesEditorInner() {
           if (projectIndex >= 0) {
             projects[projectIndex] = {
               ...projects[projectIndex],
-              workflow_data: { actions, nodes, edges },
+              workflow_data: { actions, nodes, edges, hardwareConfigs, selectedConfigId },
               updated_at: new Date().toISOString()
             }
           } else {
             projects.push({
               ...project,
-              workflow_data: { actions, nodes, edges },
+              workflow_data: { actions, nodes, edges, hardwareConfigs, selectedConfigId },
               updated_at: new Date().toISOString()
             })
           }
@@ -2131,7 +2251,7 @@ function CurvesEditorInner() {
 
         supabase
           .from('projects')
-          .update({ workflow_data: { actions, nodes, edges } })
+          .update({ workflow_data: { actions, nodes, edges, hardwareConfigs, selectedConfigId } })
           .eq('id', project.id)
           .then(({ error }) => {
             if (error) {
@@ -2146,7 +2266,7 @@ function CurvesEditorInner() {
     }, 2000) // Auto-save 2 seconds after last change
 
     return () => clearTimeout(autoSaveTimer)
-  }, [actions, nodes, edges, project, isGuest, loading, params.projecthash]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [actions, nodes, edges, hardwareConfigs, selectedConfigId, project, isGuest, loading, params.projecthash]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Legacy action functions - kept for backward compatibility but not used with nodes
   const addAction = (blockType: any) => {
@@ -4189,6 +4309,98 @@ public class ${(project?.name || 'Auto').replace(/[^a-zA-Z0-9]/g, '')}Encoder ex
               <ScrollArea className="flex-1 h-full">
                 <div className="p-3">
                 <div className="space-y-4">
+                {/* Hardware Configuration Selector */}
+                <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-bold text-white">Hardware Configurations</h3>
+                    <Button
+                      onClick={() => {
+                        const configName = prompt('Enter configuration name:')
+                        if (configName) {
+                          createNewConfig(configName)
+                          toast.success('Configuration created!')
+                        }
+                      }}
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-[10px]"
+                      title="Create new configuration"
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      New
+                    </Button>
+                  </div>
+
+                  {hardwareConfigs.length > 0 ? (
+                    <>
+                      <Select value={selectedConfigId || ''} onValueChange={setSelectedConfigId}>
+                        <SelectTrigger className="w-full h-8 text-xs bg-zinc-900 border-zinc-700">
+                          <SelectValue placeholder="Select configuration" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-zinc-900 border-zinc-700">
+                          {hardwareConfigs.map((config) => (
+                            <SelectItem key={config.id} value={config.id} className="text-xs">
+                              {config.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {selectedConfigId && (
+                        <div className="flex gap-2 mt-2">
+                          <Button
+                            onClick={() => {
+                              const config = hardwareConfigs.find(c => c.id === selectedConfigId)
+                              if (config) {
+                                const newName = prompt('Enter new name:', config.name)
+                                if (newName && newName !== config.name) {
+                                  renameConfig(selectedConfigId, newName)
+                                  toast.success('Configuration renamed!')
+                                }
+                              }
+                            }}
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 text-[10px] flex-1"
+                          >
+                            <Pencil className="h-3 w-3 mr-1" />
+                            Rename
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              saveCurrentConfigToSlot(selectedConfigId, hardwareConfigs.find(c => c.id === selectedConfigId)?.name || 'Config')
+                              toast.success('Configuration saved!')
+                            }}
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 text-[10px] flex-1"
+                          >
+                            <Save className="h-3 w-3 mr-1" />
+                            Save
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              if (confirm('Delete this configuration?')) {
+                                deleteConfig(selectedConfigId)
+                                toast.success('Configuration deleted!')
+                              }
+                            }}
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2 text-[10px] text-red-400 hover:text-red-300"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-[10px] text-zinc-500 text-center py-2">
+                      No configurations yet. Click "New" to create one.
+                    </div>
+                  )}
+                </div>
+
                 {/* Expansion Hub Toggle */}
                 <div
                   onClick={() => openConfigDialog('expansion-hub', 'control', 0)}
