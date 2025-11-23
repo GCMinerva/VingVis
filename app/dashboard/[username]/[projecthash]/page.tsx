@@ -1917,12 +1917,10 @@ function CurvesEditorInner() {
       if (fieldContainerRef.current.requestFullscreen) {
         fieldContainerRef.current.requestFullscreen()
       }
-      setIsFullscreen(true)
     } else {
       if (document.exitFullscreen) {
         document.exitFullscreen()
       }
-      setIsFullscreen(false)
     }
   }
 
