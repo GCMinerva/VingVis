@@ -2634,7 +2634,7 @@ function CurvesEditorInner() {
       }
     } else if (data.type === 'splineTo') {
       hasTrajectoryCommands = true
-      code += `${indent}.splineTo(new Vector2d(${data.targetX || 0}, ${data.targetY || 0}), Math.toRadians(${data.targetHeading || 0}))\n`
+      code += `${indent}.splineToSplineHeading(new Pose2d(${data.targetX || 0}, ${data.targetY || 0}, Math.toRadians(${data.targetHeading || 0})), Math.toRadians(${data.targetHeading || 0}))\n`
       // Add combined action if enabled
       if (data.enableSecondaryAction) {
         code += generateCombinedAction(data, indent)
